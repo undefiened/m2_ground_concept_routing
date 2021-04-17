@@ -10,6 +10,15 @@ width = data.map.width;
 height = data.map.height;
 
 flightplans = data.flightplans;
+
+if ~iscell(flightplans)
+    newFlightplans = {};
+    for i=1:size(flightplans, 1)
+        newFlightplans{i, 1} = squeeze(flightplans(i, :, :));
+    end
+    flightplans = newFlightplans;
+end
+
 obstacles = data.obstacles;
 
 minTime = +Inf;
@@ -48,16 +57,30 @@ for time=minTime:maxTime
         if length(pointInd) == 1
             point = flightplan(pointInd, 2:3);
             
-            fillHex(point(1), point(2), 'b');
-            
-            if pointInd < size(flightplan, 1)
-                nextPoint = flightplan(pointInd+1, 2:3);
-                drawAircraftPointingTo(point(1), point(2), nextPoint(1), nextPoint(2))
+            if pointInd < size(flightplan, 1) && all(flightplan(pointInd+1, 2:3) == point)
+                fillHex(point(1), point(2), 'g');
+            else
+                fillHex(point(1), point(2), 'b');
+
+                if data.drones_radius > 1
+                    occupiedHexes = data.occupied_hexes.(['x', num2str(time)]);
+
+                    for hexId=1:size(occupiedHexes, 1)
+                        hexToFill = occupiedHexes(hexId, :);
+                        fillHex(hexToFill(1), hexToFill(2), 'b');
+                    end
+                end
+
+                if pointInd < size(flightplan, 1)
+                    nextPoint = flightplan(pointInd+1, 2:3);
+                    drawAircraftPointingTo(point(1), point(2), nextPoint(1), nextPoint(2))
+                end
             end
         end
     end
     xlim([-1 width*2]);
     ylim([-2 height*1.5]);
+%     pause
     saveas(gcf, ['./results/images/res_' num2str(time, '%03.f') '.png']);
     close all;
 end
