@@ -23,6 +23,7 @@ obstacles = data.obstacles;
 
 minTime = +Inf;
 maxTime = -Inf;
+totalTime = 0;
 
 for i=1:size(flightplans, 1)
     flightplan = flightplans{i};
@@ -33,7 +34,12 @@ for i=1:size(flightplans, 1)
     if min(flightplan(:, 1)) < minTime
         minTime = min(flightplan(:, 1));
     end
+    
+    totalTime = totalTime + size(flightplan, 1);
 end
+
+
+fprintf('Total time spent %d', totalTime);
 
 for time=minTime:maxTime
     figure;
@@ -80,7 +86,7 @@ for time=minTime:maxTime
     end
     xlim([-1 width*2]);
     ylim([-2 height*1.5]);
-%     pause
+    pause
     saveas(gcf, ['./results/images/res_' num2str(time, '%03.f') '.png']);
     close all;
 end

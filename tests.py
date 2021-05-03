@@ -2,7 +2,7 @@ from unittest import TestCase
 
 import simplejson
 
-from main import HexMap, HexCoordinate, PathPlanner, Request
+from main import HexMap, HexCoordinate, PathPlanner, Request, GDP
 
 
 class HexCoordinateTestCase(TestCase):
@@ -121,7 +121,8 @@ class HexMapTestCase(TestCase):
 
         self.assertEqual(sorted(neighbours), sorted(expected_neighbours))
 
-class JumpingTestCase(TestCase):
+
+class FlightsTestCase(TestCase):
     def test_jumping_2x2(self):
         width = 3
         height = 3
@@ -144,6 +145,29 @@ class JumpingTestCase(TestCase):
 
         for flightplan in flightplans:
             data['flightplans'].append([(time, point.x, point.y) for (time, point) in flightplan.points.items()])
+
+        with open('./results/results.json', 'w') as wf:
+            simplejson.dump(data, wf)
+
+    def test_flying_after_each_other_3x3(self):
+        width = 3
+        height = 3
+
+        requests_data = [
+            {'from': [0, 0], 'to': [4, 0], 'start_time': 0},
+            {'from': [0, 0], 'to': [4, 0], 'start_time': 1},
+            {'from': [0, 0], 'to': [4, 0], 'start_time': 2},
+            {'from': [0, 0], 'to': [4, 0], 'start_time': 3},
+        ]
+        planner = PathPlanner(obstacles=[],
+                              requests=[Request(x['from'], x['to'], x['start_time']) for x in requests_data],
+                              map_width=width, map_height=height,
+                              drone_radius_m=1, hex_radius_m=1,
+                              gdp=GDP(max_time=300, penalty=1))
+
+        flightplans = planner.resolve_all()
+
+        data = planner.get_data_as_dict()
 
         with open('./results/results.json', 'w') as wf:
             simplejson.dump(data, wf)

@@ -1,5 +1,6 @@
 import functools
 import itertools
+import random
 import time
 from dataclasses import dataclass
 from math import ceil
@@ -9,6 +10,8 @@ import simplejson
 from igraph import *
 import networkx as nx
 
+
+DEBUG = False
 
 
 @dataclass
@@ -30,9 +33,11 @@ class GDP:
 
 
 class Flightplan:
+    ONE_TICK_TO_LAND = False
+
     def __init__(self, points: List[Tuple[int, "HexCoordinate"]]):
         self.start_time = min([x[0] for x in points])
-        self.end_time = max([x[0] for x in points])
+        self._end_time = max([x[0] for x in points])
 
         self.points: Dict[(int, HexCoordinate)] = {}
         self._fill_points(points)
@@ -41,14 +46,25 @@ class Flightplan:
         for (time, point) in points:
             self.points[time] = point
 
+    @property
+    def end_time(self):
+        if self.ONE_TICK_TO_LAND:
+            return self._end_time + 1
+        else:
+            return self._end_time
+
+    @end_time.setter
+    def end_time(self, value):
+        self._end_time = value
+
     def is_present_at_time(self, time: int) -> bool:
-        return time >= self.start_time and time <= self.end_time + 1
+        return time >= self.start_time and time <= self.end_time
 
     def position_at_time(self, time: int) -> "HexCoordinate":
         if not self.is_present_at_time(time):
             raise Exception('Not present at time {}'.format(time))
 
-        if time not in self.points:
+        if self.ONE_TICK_TO_LAND and time not in self.points:
             return self.points[time-1]
 
         return self.points[time]
@@ -185,7 +201,7 @@ class HexMap:
 
 
 class PathPlanner:
-    TIME_MULTIPLIER = 10 # how many layers to create in the graph
+    TIME_MULTIPLIER = 40 # how many layers to create in the graph
 
     def __init__(self, obstacles: List[HexCoordinate], requests: List[Request], map_width, map_height,
                  hex_radius_m, drone_radius_m, gdp):
@@ -230,25 +246,25 @@ class PathPlanner:
                     if node_neighbours[neigh_i] not in occupied:
                         if not (self.jumping_can_occur() and (node_neighbours[neigh_i], node_coord) in drones_movements):
                             edges.append(
-                                (self.time_ext_node_id(node_id, time), self.time_ext_node_id(node_neighbour_id, time + 1), 1)
+                                (self.time_ext_node_id(node_id, i), self.time_ext_node_id(node_neighbour_id, i + 1), 1)
                             )
 
                 if node_coord not in occupied:
                     edges.append(
-                        (self.time_ext_node_id(node_id, time), self.time_ext_node_id(node_id, time + 1), 1) # hovering
+                        (self.time_ext_node_id(node_id, i), self.time_ext_node_id(node_id, i + 1), 1) # hovering
                     )
 
             edges.append(
-                (self.time_ext_node_id(destination_node_id, time), sink, 0) # sink
+                (self.time_ext_node_id(destination_node_id, i), sink, 0) # sink
             )
 
             if i < self.gdp.max_time and request.start_point not in occupied:
                 edges.append(
-                    (source, self.time_ext_node_id(start_node_id, time), i*self.gdp.penalty)  # source
+                    (source, self.time_ext_node_id(start_node_id, i), i*self.gdp.penalty)  # source
                 )
 
         edges.append(
-            (source, self.time_ext_node_id(start_node_id, time_from), 0) # source
+            (source, self.time_ext_node_id(start_node_id, 0), 0) # source
         )
 
         graph.add_weighted_edges_from(edges)
@@ -291,9 +307,10 @@ class PathPlanner:
         return occupied_hexes
 
     def resolve_all(self) -> List[Flightplan]:
-        for request in self.requests:
+        for i, request in enumerate(self.requests):
             new_flightplan = self.resolve_request(request)
             self.flightplans.append(new_flightplan)
+            print('{} out of {}'.format(i, len(self.requests)))
 
         return self.flightplans
 
@@ -303,52 +320,45 @@ class PathPlanner:
         graph, start_id, end_id = self._build_graph(request.start_time, request.start_time + self.TIME_MULTIPLIER*distance, request)
         path = nx.shortest_path(graph, start_id, end_id)
 
+        if DEBUG:
+            import matplotlib.pyplot as plt
+            import pygraphviz as pgv
+            from networkx.drawing.nx_agraph import graphviz_layout, to_agraph
+            # nx.draw(graph, with_labels=True)
+            # plt.show(dpi=600)
+            A = to_agraph(graph)
+            print(A)
+            A.layout('dot')
+            A.draw('abcd.png')
+
         points = []
-        if self.map.int_time(path[1]) != request.start_time:
-            for i in range(self.map.int_time(path[1]) - request.start_time):
+        if self.map.int_time(path[1]) != 0:
+            for i in range(self.map.int_time(path[1])):
                 points.append((i + request.start_time, self.map.int_to_coord(path[1])))
 
         for i, node_id in enumerate(path[1:-1]):
-            points.append((self.map.int_time(node_id), self.map.int_to_coord(node_id)))
+            points.append((self.map.int_time(node_id) + request.start_time, self.map.int_to_coord(node_id)))
 
         new_flightplan = Flightplan(points=points)
 
         return new_flightplan
 
-
-def main():
-    fname = 'requests'
-    fname = 'requests_towards_each_other'
-    fname = 'requests_towards_each_other_radius'
-    fname = 'requests_towards_radius_gdp'
-    fname = 'requests_towards_radius_gdp_longer'
-
-    with open('./data/{}.json'.format(fname), 'r') as f:
-        data = simplejson.load(f)
-        requests_data = data['requests']
-        requests = [Request(x['from'], x['to'], x['start_time']) for x in requests_data]
-        obstacles_data = data['obstacles']
-        obstacles = [HexCoordinate(x=x[0], y=x[1]) for x in obstacles_data]
-        planner = PathPlanner(obstacles=obstacles, requests=requests, map_width=7, map_height=7,
-                              drone_radius_m=data['radius'], hex_radius_m=1,
-                              gdp=GDP(max_time=data['gdp']['max_time'], penalty=data['gdp']['penalty']))
-        flightplans = planner.resolve_all()
-
+    def get_data_as_dict(self):
         data = {
             'map': {
-                'width': 7,
-                'height': 7
+                'width': self.map.width,
+                'height': self.map.height
             },
-            'drones_radius': planner.drone_radius_hex,
+            'drones_radius': self.drone_radius_hex,
             'flightplans': [],
             'occupied_hexes': {},
-            'obstacles': obstacles_data
+            'obstacles': [(x.x, x.y) for x in self.obstacles]
         }
 
         min_time = math.inf
         max_time = -math.inf
 
-        for flightplan in flightplans:
+        for flightplan in self.flightplans:
             flightplan_points = [(time, point.x, point.y) for (time, point) in flightplan.points.items()]
 
             data['flightplans'].append(flightplan_points)
@@ -363,7 +373,48 @@ def main():
                 max_time = flightplan_max_time
 
         for time in range(min_time, max_time + 1):
-            data['occupied_hexes'][time] = [(point.x, point.y) for point in planner.list_of_occupied_hexes(time, render_mode=True)]
+            data['occupied_hexes'][time] = [(point.x, point.y) for point in
+                                            self.list_of_occupied_hexes(time, render_mode=True)]
+
+        return data
+
+
+def main():
+    fname = 'requests'
+    fname = 'requests_towards_each_other'
+    fname = 'requests_towards_each_other_radius'
+    fname = 'requests_towards_radius_gdp'
+    fname = 'requests_towards_radius_gdp_longer'
+    fname = 'requests_worst_case'
+
+    with open('./data/{}.json'.format(fname), 'r') as f:
+        width = 7
+        height = 7
+
+        data = simplejson.load(f)
+        requests_data = data['requests']
+
+        # requests = [Request(x['from'], x['to'], x['start_time']) for x in requests_data]
+        requests = []
+        for i in range(20):
+            requests.append(Request((0, 4), (12, 4), i))
+
+        for i in range(20):
+            requests.append(Request((4, 0), (4, 6), i))
+            requests.append(Request((6, 0), (6, 6), i))
+            # requests.append(Request((8, 0), (8, 6), i))
+            # requests.append(Request((2, 0), (2, 6), i))
+
+        # random.shuffle(requests)
+
+        obstacles_data = data['obstacles']
+        obstacles = [HexCoordinate(x=x[0], y=x[1]) for x in obstacles_data]
+        planner = PathPlanner(obstacles=obstacles, requests=requests, map_width=width, map_height=height,
+                              drone_radius_m=data['radius'], hex_radius_m=1,
+                              gdp=GDP(max_time=data['gdp']['max_time'], penalty=data['gdp']['penalty']))
+        planner.resolve_all()
+
+        data = planner.get_data_as_dict()
 
         with open('./results/results.json', 'w') as wf:
             simplejson.dump(data, wf)
