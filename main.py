@@ -202,7 +202,6 @@ class HexMap:
 
 
 class PathPlanner:
-    TIME_MULTIPLIER = 40 # obsolete since implementation of Dijkstra without building the whole graph
     SOURCE_NODE_ID = -1
     SINK_NODE_ID = -2
 
@@ -296,63 +295,6 @@ class PathPlanner:
 
         return path
 
-    def _build_graph(self, time_from: int, time_to: int, request: Request) -> (nx.DiGraph, int, int):
-        # create nodes and add edges in one pass
-        number_of_layers = time_to - time_from
-        graph = nx.DiGraph()
-
-        all_nodes = range(self.map.number_of_nodes * number_of_layers + 2)
-        graph.add_nodes_from(all_nodes)
-
-        destination_node_id = self.map.coord_to_int(request.end_point)
-        start_node_id = self.map.coord_to_int(request.start_point)
-
-        edges = []
-
-        source = all_nodes[-2]
-        sink = all_nodes[-1]
-        for i in range(number_of_layers-1):
-            time = time_from + i
-
-            occupied = self.list_of_occupied_hexes(time + 1)
-
-            if self.jumping_can_occur():
-                drones_movements = self.list_of_pending_drone_movements(time + 1)
-
-            for node_id in range(self.map.number_of_nodes):
-                node_coord = self.map.int_to_coord(node_id)
-                node_neighbours = self.map.get_neighbours(node_coord)
-                node_neighbours_ids = [self.map.coord_to_int(x) for x in node_neighbours]
-
-                for (neigh_i, node_neighbour_id) in enumerate(node_neighbours_ids):
-                    if node_neighbours[neigh_i] not in occupied:
-                        if not (self.jumping_can_occur() and (node_neighbours[neigh_i], node_coord) in drones_movements):
-                            edges.append(
-                                (self.time_ext_node_id(node_id, i), self.time_ext_node_id(node_neighbour_id, i + 1), 1)
-                            )
-
-                if node_coord not in occupied:
-                    edges.append(
-                        (self.time_ext_node_id(node_id, i), self.time_ext_node_id(node_id, i + 1), 1) # hovering
-                    )
-
-            edges.append(
-                (self.time_ext_node_id(destination_node_id, i), sink, 0) # sink
-            )
-
-            if i < self.gdp.max_time and request.start_point not in occupied:
-                edges.append(
-                    (source, self.time_ext_node_id(start_node_id, i), i*self.gdp.penalty)  # source
-                )
-
-        edges.append(
-            (source, self.time_ext_node_id(start_node_id, 0), 0) # source
-        )
-
-        graph.add_weighted_edges_from(edges)
-
-        return graph, source, sink
-
     def time_ext_node_id(self, node_id: int, time: int) -> int:
         return node_id + self.map.number_of_nodes * time
 
@@ -394,24 +336,6 @@ class PathPlanner:
             print('{} out of {}'.format(i, len(self.requests)))
 
         return self.flightplans
-
-    def old_resolve_request(self, request: Request) -> Flightplan:
-        distance = self.map.distance_between_points(request.start_point, request.end_point)
-
-        graph, start_id, end_id = self._build_graph(request.start_time, request.start_time + self.TIME_MULTIPLIER*distance, request)
-        path = nx.shortest_path(graph, start_id, end_id)
-
-        points = []
-        if self.map.int_time(path[1]) != 0:
-            for i in range(self.map.int_time(path[1])):
-                points.append((i + request.start_time, self.map.int_to_coord(path[1])))
-
-        for i, node_id in enumerate(path[1:-1]):
-            points.append((self.map.int_time(node_id) + request.start_time, self.map.int_to_coord(node_id)))
-
-        new_flightplan = Flightplan(points=points)
-
-        return new_flightplan
 
     def resolve_request(self, request: Request) -> Flightplan:
         path = self._find_shortest_path(request)
