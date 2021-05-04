@@ -131,22 +131,15 @@ class FlightsTestCase(TestCase):
             {'from': [0, 0], 'to': [4, 0], 'start_time': 0},
             {'from': [4, 0], 'to': [0, 0], 'start_time': 0},
         ]
-        planner = PathPlanner(obstacles=[], requests=[Request(x['from'], x['to'], x['start_time']) for x in requests_data], map_width=width, map_height=height)
+        planner = PathPlanner(obstacles=[], requests=[Request(x['from'], x['to'], x['start_time']) for x in requests_data], map_width=width, map_height=height, hex_radius_m=1, drone_radius_m=1, gdp=GDP(1000, 1))
         flightplans = planner.resolve_all()
 
-        data = {
-            'map': {
-                'width': width,
-                'height': height
-            },
-            'flightplans': [],
-            'obstacles': []
-        }
+        data = planner.get_data_as_dict()
 
-        for flightplan in flightplans:
-            data['flightplans'].append([(time, point.x, point.y) for (time, point) in flightplan.points.items()])
+        self.assertEqual(3, len(flightplans[0].points))
+        self.assertEqual(4, len(flightplans[1].points))
 
-        with open('./results/results.json', 'w') as wf:
+        with open('./results/test_results.json', 'w') as wf:
             simplejson.dump(data, wf)
 
     def test_flying_after_each_other_3x3(self):
@@ -167,7 +160,138 @@ class FlightsTestCase(TestCase):
 
         flightplans = planner.resolve_all()
 
+        self.assertEqual(3, len(flightplans[0].points))
+        self.assertEqual(3, len(flightplans[1].points))
+        self.assertEqual(3, len(flightplans[2].points))
+        self.assertEqual(3, len(flightplans[3].points))
+
         data = planner.get_data_as_dict()
 
-        with open('./results/results.json', 'w') as wf:
+        with open('./results/test_results.json', 'w') as wf:
             simplejson.dump(data, wf)
+
+
+class ResolutionTestCase(TestCase):
+    def test_single_straight_flight(self):
+        width = 4
+        height = 4
+
+        requests_data = [
+            {'from': [0, 0], 'to': [6, 0], 'start_time': 0},
+        ]
+        planner = PathPlanner(obstacles=[],
+                              requests=[Request(x['from'], x['to'], x['start_time']) for x in requests_data],
+                              map_width=width, map_height=height, hex_radius_m=1, drone_radius_m=1, gdp=GDP(10, 1))
+
+        flightplans = planner.resolve_all()
+
+        data = planner.get_data_as_dict()
+
+        with open('./results/test_results.json', 'w') as wf:
+            simplejson.dump(data, wf)
+
+        self.assertEqual(4, len(flightplans[0].points))
+
+    def test_single_straight_flight_time_offset(self):
+        width = 4
+        height = 4
+
+        requests_data = [
+            {'from': [0, 0], 'to': [6, 0], 'start_time': 3},
+        ]
+        planner = PathPlanner(obstacles=[],
+                              requests=[Request(x['from'], x['to'], x['start_time']) for x in requests_data],
+                              map_width=width, map_height=height, hex_radius_m=1, drone_radius_m=1, gdp=GDP(10, 1))
+
+        flightplans = planner.resolve_all()
+
+        data = planner.get_data_as_dict()
+
+        with open('./results/test_results.json', 'w') as wf:
+            simplejson.dump(data, wf)
+
+        self.assertEqual(4, len(flightplans[0].points))
+
+    def test_single_flight_around_obstacle(self):
+        width = 4
+        height = 4
+
+        requests_data = [
+            {'from': [0, 0], 'to': [6, 0], 'start_time': 0},
+        ]
+        planner = PathPlanner(obstacles=[HexCoordinate(4, 0), ],
+                              requests=[Request(x['from'], x['to'], x['start_time']) for x in requests_data],
+                              map_width=width, map_height=height, hex_radius_m=1, drone_radius_m=1, gdp=GDP(1000, 1))
+
+        flightplans = planner.resolve_all()
+
+        data = planner.get_data_as_dict()
+
+        with open('./results/test_results.json', 'w') as wf:
+            simplejson.dump(data, wf)
+
+        self.assertEqual(5, len(flightplans[0].points))
+
+    def test_two_flights_towards_each_other_without_obstacles(self):
+        width = 4
+        height = 4
+
+        requests_data = [
+            {'from': [0, 0], 'to': [6, 0], 'start_time': 0},
+            {'from': [6, 0], 'to': [0, 0], 'start_time': 0},
+        ]
+        planner = PathPlanner(obstacles=[],
+                              requests=[Request(x['from'], x['to'], x['start_time']) for x in requests_data],
+                              map_width=width, map_height=height, hex_radius_m=1, drone_radius_m=1, gdp=GDP(1000, 1))
+
+        flightplans = planner.resolve_all()
+
+        data = planner.get_data_as_dict()
+
+        with open('./results/test_results.json', 'w') as wf:
+            simplejson.dump(data, wf)
+
+        self.assertEqual(4, len(flightplans[0].points))
+        self.assertEqual(5, len(flightplans[1].points))
+
+    def test_two_flights_towards_each_other_with_obstacles(self):
+        width = 4
+        height = 4
+
+        requests_data = [
+            {'from': [0, 0], 'to': [6, 0], 'start_time': 0},
+            {'from': [6, 0], 'to': [0, 0], 'start_time': 0},
+        ]
+        planner = PathPlanner(obstacles=[HexCoordinate(4, 0)],
+                              requests=[Request(x['from'], x['to'], x['start_time']) for x in requests_data],
+                              map_width=width, map_height=height, hex_radius_m=1, drone_radius_m=1, gdp=GDP(1000, 1))
+
+        flightplans = planner.resolve_all()
+
+        data = planner.get_data_as_dict()
+
+        with open('./results/test_results.json', 'w') as wf:
+            simplejson.dump(data, wf)
+
+        self.assertEqual(5, len(flightplans[0].points))
+        self.assertEqual(6, len(flightplans[1].points))
+
+
+class FlightPlannerTestCase(TestCase):
+    def test_get_all_neighbours(self):
+        width = 4
+        height = 4
+
+        requests_data = [
+            {'from': [0, 0], 'to': [6, 0], 'start_time': 3},
+        ]
+        planner = PathPlanner(obstacles=[],
+                              requests=[Request(x['from'], x['to'], x['start_time']) for x in requests_data],
+                              map_width=width, map_height=height, hex_radius_m=1, drone_radius_m=1, gdp=GDP(10, 1))
+
+        neighbours = planner._get_all_neighbours(HexCoordinate(0, 0), 5, Request((0, 0), (6, 0), 3))
+
+        self.assertEqual(3, len(neighbours))
+        self.assertEqual(6, planner.map.int_time(neighbours[0][0]))
+        self.assertEqual(6, planner.map.int_time(neighbours[1][0]))
+        self.assertEqual(6, planner.map.int_time(neighbours[2][0]))

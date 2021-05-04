@@ -1,5 +1,6 @@
 import functools
 import itertools
+import queue
 import random
 import time
 from dataclasses import dataclass
@@ -201,7 +202,9 @@ class HexMap:
 
 
 class PathPlanner:
-    TIME_MULTIPLIER = 40 # how many layers to create in the graph
+    TIME_MULTIPLIER = 40 # obsolete since implementation of Dijkstra without building the whole graph
+    SOURCE_NODE_ID = -1
+    SINK_NODE_ID = -2
 
     def __init__(self, obstacles: List[HexCoordinate], requests: List[Request], map_width, map_height,
                  hex_radius_m, drone_radius_m, gdp):
@@ -213,6 +216,85 @@ class PathPlanner:
         self.drone_radius_m = drone_radius_m
         self.drone_radius_hex = ceil(drone_radius_m/hex_radius_m)
         self.gdp = gdp
+
+    def _get_all_neighbours(self, coordinate: HexCoordinate, time: int, request: Request) -> List[Tuple[int, float]]:
+        viable_neighbours_ids: List[Tuple[int, float]] = []
+
+        occupied = self.list_of_occupied_hexes(time + 1)
+        if self.jumping_can_occur():
+            drones_movements = self.list_of_pending_drone_movements(time + 1)
+
+        neighbours = self.map.get_neighbours(coordinate)
+        neighbours_ids = [self.map.coord_to_int(x) for x in neighbours]
+
+        for (neigh_i, node_neighbour_id) in enumerate(neighbours_ids):
+            if neighbours[neigh_i] not in occupied:
+                if not (self.jumping_can_occur() and (neighbours[neigh_i], coordinate) in drones_movements):
+                    viable_neighbours_ids.append(
+                        (self.time_ext_node_id(node_neighbour_id, time + 1), 1)
+                    )
+
+        if coordinate not in occupied:
+            viable_neighbours_ids.append(
+                (self.time_ext_node_id(self.map.coord_to_int(coordinate), time + 1), 1)  # hovering
+            )
+
+        if coordinate == request.end_point:
+            viable_neighbours_ids.append(
+                (self.SINK_NODE_ID, 0)  # sink
+            )
+
+        return viable_neighbours_ids
+
+    def _find_shortest_path(self, request: Request) -> List[int]:
+        self._visited_nodes = set()
+        self._nodes_weights = {}
+        self._queue = queue.PriorityQueue()
+        self._previous_nodes = {}
+
+        # self._queue.put((0, self.SOURCE_NODE_ID))
+
+        for i in range(self.gdp.max_time+1):
+            weight = i*self.gdp.penalty
+            occupied = self.list_of_occupied_hexes(request.start_time + i)
+            coord = self.time_ext_node_id(self.map.coord_to_int(request.start_point), request.start_time + i)
+
+            if request.start_point not in occupied:
+                self._queue.put((weight, coord))
+                self._nodes_weights[coord] = weight
+                self._previous_nodes[coord] = self.SOURCE_NODE_ID
+
+        while not self._queue.empty():
+            (weight, current_node_id) = self._queue.get()
+
+            if current_node_id not in self._visited_nodes:
+                if current_node_id == self.SINK_NODE_ID:
+                    break
+
+                current_node_weight = self._nodes_weights[current_node_id]
+                current_node_coord = self.map.int_to_coord(current_node_id)
+                current_node_time = self.map.int_time(current_node_id)
+
+                neighbours = self._get_all_neighbours(current_node_coord, current_node_time, request)
+
+                for (neighbour_id, weight) in neighbours:
+                    if neighbour_id not in self._nodes_weights or weight + current_node_weight < self._nodes_weights[neighbour_id]:
+                        self._nodes_weights[neighbour_id] = weight + current_node_weight
+                        self._previous_nodes[neighbour_id] = current_node_id
+                        self._queue.put((weight + current_node_weight, neighbour_id))
+
+                self._visited_nodes.add(current_node_id)
+
+        path = []
+        previous_node = self._previous_nodes[self.SINK_NODE_ID]
+
+        while previous_node != self.SOURCE_NODE_ID:
+            path.append(previous_node)
+            previous_node = self._previous_nodes[previous_node]
+
+        path.reverse()
+
+        return path
 
     def _build_graph(self, time_from: int, time_to: int, request: Request) -> (nx.DiGraph, int, int):
         # create nodes and add edges in one pass
@@ -289,7 +371,6 @@ class PathPlanner:
         return self.drone_radius_hex == 1
 
     def list_of_occupied_hexes(self, time: int, render_mode: bool = False) -> List[HexCoordinate]:
-        # TODO: reserve the next hex as well to avoid diving issue
         occupied_hexes: List[HexCoordinate] = []
 
         for plan in self.flightplans:
@@ -314,22 +395,11 @@ class PathPlanner:
 
         return self.flightplans
 
-    def resolve_request(self, request: Request) -> Flightplan:
+    def old_resolve_request(self, request: Request) -> Flightplan:
         distance = self.map.distance_between_points(request.start_point, request.end_point)
 
         graph, start_id, end_id = self._build_graph(request.start_time, request.start_time + self.TIME_MULTIPLIER*distance, request)
         path = nx.shortest_path(graph, start_id, end_id)
-
-        if DEBUG:
-            import matplotlib.pyplot as plt
-            import pygraphviz as pgv
-            from networkx.drawing.nx_agraph import graphviz_layout, to_agraph
-            # nx.draw(graph, with_labels=True)
-            # plt.show(dpi=600)
-            A = to_agraph(graph)
-            print(A)
-            A.layout('dot')
-            A.draw('abcd.png')
 
         points = []
         if self.map.int_time(path[1]) != 0:
@@ -338,6 +408,21 @@ class PathPlanner:
 
         for i, node_id in enumerate(path[1:-1]):
             points.append((self.map.int_time(node_id) + request.start_time, self.map.int_to_coord(node_id)))
+
+        new_flightplan = Flightplan(points=points)
+
+        return new_flightplan
+
+    def resolve_request(self, request: Request) -> Flightplan:
+        path = self._find_shortest_path(request)
+
+        points = []
+        if self.map.int_time(path[0]) != request.start_time:
+            for i in range(self.map.int_time(path[0]) - request.start_time):
+                points.append((i + request.start_time, self.map.int_to_coord(path[0])))
+
+        for i, node_id in enumerate(path):
+            points.append((self.map.int_time(node_id), self.map.int_to_coord(node_id)))
 
         new_flightplan = Flightplan(points=points)
 
@@ -383,9 +468,9 @@ def main():
     fname = 'requests'
     fname = 'requests_towards_each_other'
     fname = 'requests_towards_each_other_radius'
-    fname = 'requests_towards_radius_gdp'
-    fname = 'requests_towards_radius_gdp_longer'
-    fname = 'requests_worst_case'
+    # fname = 'requests_towards_radius_gdp'
+    # fname = 'requests_towards_radius_gdp_longer'
+    # fname = 'requests_worst_case'
 
     with open('./data/{}.json'.format(fname), 'r') as f:
         width = 7
@@ -394,18 +479,18 @@ def main():
         data = simplejson.load(f)
         requests_data = data['requests']
 
-        # requests = [Request(x['from'], x['to'], x['start_time']) for x in requests_data]
-        requests = []
-        for i in range(20):
-            requests.append(Request((0, 4), (12, 4), i))
-
-        for i in range(20):
-            requests.append(Request((4, 0), (4, 6), i))
-            requests.append(Request((6, 0), (6, 6), i))
-            # requests.append(Request((8, 0), (8, 6), i))
-            # requests.append(Request((2, 0), (2, 6), i))
-
-        # random.shuffle(requests)
+        requests = [Request(x['from'], x['to'], x['start_time']) for x in requests_data]
+        # requests = []
+        # for i in range(20):
+        #     requests.append(Request((0, 4), (12, 4), i))
+        #
+        # for i in range(20):
+        #     requests.append(Request((4, 0), (4, 6), i))
+        #     requests.append(Request((6, 0), (6, 6), i))
+        #     # requests.append(Request((8, 0), (8, 6), i))
+        #     # requests.append(Request((2, 0), (2, 6), i))
+        #
+        # # random.shuffle(requests)
 
         obstacles_data = data['obstacles']
         obstacles = [HexCoordinate(x=x[0], y=x[1]) for x in obstacles_data]
