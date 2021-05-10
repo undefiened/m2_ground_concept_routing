@@ -5,11 +5,12 @@ import random
 import time
 from dataclasses import dataclass
 from math import ceil
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Set, Union
 
 import simplejson
 from igraph import *
 import networkx as nx
+import numpy as np
 
 
 DEBUG = False
@@ -21,9 +22,17 @@ class Request:
     end_point: "HexCoordinate"
     start_time: int
 
-    def __init__(self, start: Tuple[int, int], end: Tuple[int, int], start_time: int):
-        self.start_point = HexCoordinate(x=start[0], y=start[1])
-        self.end_point = HexCoordinate(x=end[0], y=end[1])
+    def __init__(self, start: Union[Tuple[int, int], "HexCoordinate"], end: Union[Tuple[int, int], "HexCoordinate"], start_time: int):
+        if isinstance(start, HexCoordinate):
+            self.start_point = start
+        else:
+            self.start_point = HexCoordinate(x=start[0], y=start[1])
+
+        if isinstance(end, HexCoordinate):
+            self.end_point = end
+        else:
+            self.end_point = HexCoordinate(x=end[0], y=end[1])
+
         self.start_time = start_time
 
 
@@ -96,6 +105,9 @@ class HexCoordinate:
 
     def __eq__(self, other: "HexCoordinate") -> bool:
         return self.x == other.x and self.y == other.y
+
+    def __hash__(self) -> int:
+        return hash((self.x, self.y))
 
 
 class HexMap:
@@ -206,7 +218,7 @@ class PathPlanner:
     SINK_NODE_ID = -2
 
     def __init__(self, obstacles: List[HexCoordinate], requests: List[Request], map_width, map_height,
-                 hex_radius_m, drone_radius_m, gdp):
+                 hex_radius_m, drone_radius_m, gdp, city_map=None):
         self.flightplans: List[Flightplan] = []
         self.obstacles = obstacles
         self.requests = requests
@@ -215,6 +227,8 @@ class PathPlanner:
         self.drone_radius_m = drone_radius_m
         self.drone_radius_hex = ceil(drone_radius_m/hex_radius_m)
         self.gdp = gdp
+
+        self.city_map = city_map
 
     def _get_all_neighbours(self, coordinate: HexCoordinate, time: int, request: Request) -> List[Tuple[int, float]]:
         viable_neighbours_ids: List[Tuple[int, float]] = []
@@ -385,10 +399,159 @@ class PathPlanner:
             data['occupied_hexes'][time] = [(point.x, point.y) for point in
                                             self.list_of_occupied_hexes(time, render_mode=True)]
 
+        if self.city_map is not None:
+            data['heights'] = self.city_map.heights_map.tolist()
+            data['size'] = self.city_map.hexagonal_map_size()
+            data['hex_r_px'] = self.city_map.hex_radius_in_px
+
         return data
 
 
-def main():
+class HexHelper:
+    @staticmethod
+    def cube_to_axial(x, y, z) -> Tuple[float, float]:
+        q = x
+        r = z
+        return (q, r)
+
+    @staticmethod
+    def axial_to_cube(q: float, r: float) -> Tuple[float, float, float]:
+        x = q
+        z = r
+        y = -x - z
+        return (x, y, z)
+
+    @staticmethod
+    def doublewidth_to_cube(col: float, row: float) -> Tuple[float, float, float]:
+        x = (col - row) / 2
+        z = row
+        y = -x - z
+        return (x, y, z)
+
+    @staticmethod
+    def cube_to_doublewidth(x: float, y: float, z: float) -> Tuple[float, float]:
+        col = 2 * x + z
+        row = z
+        return (col, row)
+
+
+class CityMap:
+    # Maybe add support for hex < pixel
+    def __init__(self, heights: np.array, pixel_size_m: float, hex_radius_m: float, flight_height: float):
+        self.heights_map: np.array = heights
+        self.pixel_size_m = pixel_size_m
+        self.hex_radius_m = hex_radius_m
+        self.flight_height = flight_height
+
+        if self.pixel_size_m > 4*self.hex_radius_m:
+            raise NotImplementedError("This implementation does not support the case where hexagons are smaller than pixels. Hexagons should have radius at least 4 times pixel size")
+
+    @property
+    def hex_radius_in_px(self) -> float:
+        return self.hex_radius_m/self.pixel_size_m
+
+    def _cube_round(self, x, y, z):
+        rx = round(x)
+        ry = round(y)
+        rz = round(z)
+
+        x_diff = abs(rx - x)
+        y_diff = abs(ry - y)
+        z_diff = abs(rz - z)
+
+        if x_diff > y_diff and x_diff > z_diff:
+            rx = -ry - rz
+        elif y_diff > z_diff:
+            ry = -rx - rz
+        else:
+            rz = -rx - ry
+
+        return (rx, ry, rz)
+
+    def _axial_hex_round(self, q: float, r: float) -> HexCoordinate:
+        cube = HexHelper.axial_to_cube(q, r)
+        cube_rounded = self._cube_round(*cube)
+        x, y = HexHelper.cube_to_doublewidth(*cube_rounded)
+
+        if abs(x - int(x)) > 0.00001 or abs(y - int(y)) > 0.00001:
+            raise Exception("Error rounding coordinates")
+
+        return HexCoordinate(int(x), int(y))
+
+    def hexagonal_map_size(self) -> Tuple[int, int]:
+        map_width_m = self.heights_map.shape[1] * self.pixel_size_m
+        map_height_m = self.heights_map.shape[0] * self.pixel_size_m
+
+        hex_width = math.sqrt(3) * self.hex_radius_m
+        hex_height = 2 * self.hex_radius_m
+
+        # TODO: if odd or even then add +1
+        map_width_in_hex = math.ceil(map_width_m/hex_width) + 1 # +1 to have extra hex on both sides
+        map_height_in_hex = math.ceil(map_height_m/(hex_height*3/4)) + 1 # 3/4 because horizontal spacing between two hexagons is 3/4 h
+
+        return (
+            map_width_in_hex,
+            map_height_in_hex
+        )
+
+    def coord_to_hex(self, x: int, y: int) -> HexCoordinate:
+        q = (math.sqrt(3) / 3 * x - 1. / 3 * y) / self.hex_radius_in_px
+        r = (2. / 3 * y) / self.hex_radius_in_px
+
+        return self._axial_hex_round(q, r)
+
+    def obstacles(self) -> List[HexCoordinate]:
+        obstacles_list = set()
+
+        for x in range(self.heights_map.shape[1]):
+            for y in range(self.heights_map.shape[0]):
+                if self.heights_map[y, x] > self.flight_height:
+                    obstacles_list.add(self.coord_to_hex(x, y))
+
+        return list(obstacles_list)
+
+    def requests_to_hex_grid(self, requests: List) -> List[Request]:
+        converted_requests = []
+
+        for request in requests:
+            coord_from = self.coord_to_hex(request['from'][0], request['from'][1])
+            coord_to = self.coord_to_hex(request['to'][0], request['to'][1])
+            converted_requests.append(Request(coord_from, coord_to, request['start_time']))
+
+        return converted_requests
+
+
+def run_ny_map():
+    requests_fname = 'ny_1_requests_1'
+    heights_fname = 'ny_1_heights'
+    map_details_fname = 'ny_1_details'
+
+    with open('./data/{}.json'.format(requests_fname), 'r') as requests_f, open('./data/{}.json'.format(heights_fname), 'r') as heights_f, open('./data/{}.json'.format(map_details_fname), 'r') as map_f:
+        map_data = simplejson.load(map_f)
+        heights_raw = np.array(simplejson.load(heights_f))
+        city_map = CityMap(heights=heights_raw, pixel_size_m=map_data["pixel_size_m"], hex_radius_m=map_data["hex_radius_m"], flight_height=map_data["flight_height"])
+
+        width = city_map.hexagonal_map_size()[0]
+        height = city_map.hexagonal_map_size()[1]
+
+        data = simplejson.load(requests_f)
+        requests_data = data['requests']
+
+        requests = city_map.requests_to_hex_grid(requests_data)
+
+        obstacles = city_map.obstacles()
+        planner = PathPlanner(obstacles=obstacles, requests=requests, map_width=width, map_height=height,
+                              drone_radius_m=1, hex_radius_m=1,
+                              gdp=GDP(max_time=data['gdp']['max_time'], penalty=data['gdp']['penalty']), city_map=city_map)
+        planner.resolve_all()
+
+        data = planner.get_data_as_dict()
+
+        with open('./results/ny_results.json', 'w') as wf:
+            simplejson.dump(data, wf)
+
+
+def run_simple():
     fname = 'requests'
     fname = 'requests_towards_each_other'
     fname = 'requests_towards_each_other_radius'
@@ -427,6 +590,10 @@ def main():
 
         with open('./results/results.json', 'w') as wf:
             simplejson.dump(data, wf)
+
+
+def main():
+    run_ny_map()
 
 
 if __name__ == '__main__':

@@ -1,0 +1,9 @@
+{"requests":  [
+  {"from": [150, 200], "to": [700, 650], "start_time": 0}
+],
+"radius": 1,
+"gdp": {
+  "max_time": 50,
+  "penalty": 1
+},
+"obstacles": []}

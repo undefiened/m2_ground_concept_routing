@@ -4,7 +4,7 @@ res = rmdir("./results/images/", 's');
 display(res);
 mkdir("./results/images/");
 
-data = jsondecode(fileread("./results/results.json"));
+data = jsondecode(fileread("./results/ny_results.json"));
 
 width = data.map.width;
 height = data.map.height;
@@ -86,7 +86,7 @@ for time=minTime:maxTime
     end
     xlim([-1 width*2]);
     ylim([-2 height*1.5]);
-    pause
+%     pause
     saveas(gcf, ['./results/images/res_' num2str(time, '%03.f') '.png']);
     close all;
 end

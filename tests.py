@@ -1,8 +1,9 @@
 from unittest import TestCase
 
 import simplejson
+import numpy as np
 
-from main import HexMap, HexCoordinate, PathPlanner, Request, GDP
+from main import HexMap, HexCoordinate, PathPlanner, Request, GDP, CityMap
 
 
 class HexCoordinateTestCase(TestCase):
@@ -295,3 +296,52 @@ class FlightPlannerTestCase(TestCase):
         self.assertEqual(6, planner.map.int_time(neighbours[0][0]))
         self.assertEqual(6, planner.map.int_time(neighbours[1][0]))
         self.assertEqual(6, planner.map.int_time(neighbours[2][0]))
+
+class CityMapTestCase(TestCase):
+    def test_map_size(self):
+        heights = np.zeros((40, 40))
+        map = CityMap(heights=heights, pixel_size_m=1, hex_radius_m=1, flight_height=50)
+        self.assertEqual(24, map.hexagonal_map_size()[0])
+        self.assertEqual(27, map.hexagonal_map_size()[1])
+
+        heights = np.zeros((320, 320))
+        heights[15, 20] = 1000
+        heights[16, 20] = 1000
+
+        map = CityMap(heights=heights, pixel_size_m=1, hex_radius_m=16, flight_height=50)
+        obstacles = map.obstacles()
+
+        self.assertEqual(12, map.hexagonal_map_size()[0])
+        self.assertEqual(14, map.hexagonal_map_size()[1])
+
+        heights = np.zeros((340, 340))
+        heights[15, 20] = 1000
+        heights[16, 20] = 1000
+
+        map = CityMap(heights=heights, pixel_size_m=1, hex_radius_m=16, flight_height=50)
+        obstacles = map.obstacles()
+
+        self.assertEqual(13, map.hexagonal_map_size()[0])
+        self.assertEqual(15, map.hexagonal_map_size()[1])
+
+    def test_map_obstacles(self):
+        heights = np.zeros((335, 335))
+        heights[15, 20] = 1000
+        heights[16, 20] = 1000
+        heights[50, 325] = 1000
+
+        map = CityMap(heights=heights, pixel_size_m=1, hex_radius_m=16, flight_height=50)
+        obstacles = map.obstacles()
+
+        data = {
+            'obstacles': [(x.x, x.y) for x in obstacles],
+            'heights': heights.tolist(),
+            'size': map.hexagonal_map_size(),
+            'hex_r_px': map.hex_radius_in_px
+        }
+
+        # self.assertEqual(13, map.hexagonal_map_size()[0])
+        # self.assertEqual(15, map.hexagonal_map_size()[1])
+
+        with open('./results/test_map.json', 'w') as f:
+            simplejson.dump(data, f)

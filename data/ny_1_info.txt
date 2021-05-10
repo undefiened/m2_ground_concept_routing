@@ -1,0 +1,6 @@
+side_width = 4940m
+color at which 50m start = 168 168 168
+4 - 51
+51 - 99
+99 - 147
+147 - 194

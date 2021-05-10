@@ -1,0 +1,7 @@
+{"requests":  [],
+"radius": 1,
+"gdp": {
+  "max_time": 1000,
+  "penalty": 0.9
+},
+"obstacles": []}
