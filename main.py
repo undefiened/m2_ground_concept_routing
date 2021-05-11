@@ -79,15 +79,55 @@ class Flightplan:
 
         return self.points[time]
 
+    def smoothed(self) -> List[Tuple[int, "HexCoordinate"]]:
+        smoothed_points: List[Tuple[int, "HexCoordinate"]] = []
+
+        orig_points = [(t, x) for (t, x) in sorted(self.points.items(), key=lambda x : x[0])]
+
+        i = 0
+        smoothed_points.append(orig_points[0])
+
+        while i < len(orig_points) - 1:
+            current_point = orig_points[i][1]
+
+            found_any_point = False
+            for j in reversed(range(i+1, len(orig_points))):
+                other_point = orig_points[j][1]
+
+                line = HexHelper.line_drawing(current_point, other_point)
+                if line == [x[1] for x in orig_points[i:j+1]]:
+                    found_any_point = True
+                    smoothed_points.append(orig_points[j])
+                    i = j
+                    break
+
+            if not found_any_point:
+                smoothed_points.append(orig_points[i+1])
+
+        return smoothed_points
+
 
 @functools.total_ordering
 class HexCoordinate:
+    # By default in doublewidth coordinates (see, e.g., https://www.redblobgames.com/grids/hexagons/#coordinates-doubled)
     def __init__(self, x: int, y: int):
         if (x % 2 == 0) != (y % 2 == 0):
             raise Exception('Wrong hex coordinate!')
 
-        self.x = x
-        self.y = y
+        self.x: int = x
+        self.y: int = y
+
+    def to_cube(self) -> Tuple[int, int, int]:
+        x = (self.x - self.y) / 2
+        z = self.y
+        y = -x - z
+        return (int(x), int(y), z)
+
+    @staticmethod
+    def from_cube(cube: Tuple[int, int, int]) -> "HexCoordinate":
+        col = 2 * cube[0] + cube[2]
+        row = cube[2]
+        return HexCoordinate(col, row)
 
     def __repr__(self):
         return self.__str__()
@@ -183,12 +223,6 @@ class HexMap:
     def number_of_nodes(self) -> int:
         return self.width*self.height
 
-    @staticmethod
-    def distance_between_points(point1: HexCoordinate, point2: HexCoordinate) -> int:
-        dx = abs(point1.x - point2.x)
-        dy = abs(point1.y - point2.y)
-        return round(dy + max(0, (dx - dy) / 2))
-
     def spiral(self, center: HexCoordinate, radius: int) -> List[HexCoordinate]:
         results: List[HexCoordinate] = []
 
@@ -205,7 +239,7 @@ class HexMap:
 
         cube = HexCoordinate(center.x + self.DIRECTIONS[4][0]*r, center.y + self.DIRECTIONS[4][1]*r) # step radius hexes to the right
 
-        for i in range(6):
+        for i in range(len(self.DIRECTIONS)):
             for j in range(r):
                 results.append(cube)
                 cube = HexCoordinate(cube.x + self.DIRECTIONS[i][0], cube.y + self.DIRECTIONS[i][1])
@@ -434,23 +468,8 @@ class HexHelper:
         row = z
         return (col, row)
 
-
-class CityMap:
-    # Maybe add support for hex < pixel
-    def __init__(self, heights: np.array, pixel_size_m: float, hex_radius_m: float, flight_height: float):
-        self.heights_map: np.array = heights
-        self.pixel_size_m = pixel_size_m
-        self.hex_radius_m = hex_radius_m
-        self.flight_height = flight_height
-
-        if self.pixel_size_m > 4*self.hex_radius_m:
-            raise NotImplementedError("This implementation does not support the case where hexagons are smaller than pixels. Hexagons should have radius at least 4 times pixel size")
-
-    @property
-    def hex_radius_in_px(self) -> float:
-        return self.hex_radius_m/self.pixel_size_m
-
-    def _cube_round(self, x, y, z):
+    @staticmethod
+    def cube_round(x, y, z):
         rx = round(x)
         ry = round(y)
         rz = round(z)
@@ -468,9 +487,56 @@ class CityMap:
 
         return (rx, ry, rz)
 
+    @staticmethod
+    def _lerp(a, b, t):  # for floats
+        return a + (b - a) * t
+
+    @classmethod
+    def _cube_lerp(cls, a, b, t):  # for hexes
+        return (cls._lerp(a[0] + 1e-6, b[0], t),
+                cls._lerp(a[1] + 2e-6, b[1], t),
+                cls._lerp(a[2] - 3e-6, b[2], t))
+
+    @classmethod
+    def line_drawing(cls, c1: HexCoordinate, c2: HexCoordinate) -> List[HexCoordinate]:
+        n = cls.hex_distance(c1, c2)
+
+        results = []
+        if n > 0:
+            for i in range(n + 1):
+                point = cls._cube_lerp(c1.to_cube(), c2.to_cube(), 1.0 / n * i)
+                coord = HexCoordinate.from_cube(cls.cube_round(*point))
+                results.append(coord)
+        else:
+            results = [c1, c2]
+
+        return results
+
+    @staticmethod
+    def hex_distance(point1: HexCoordinate, point2: HexCoordinate) -> int:
+        dx = abs(point1.x - point2.x)
+        dy = abs(point1.y - point2.y)
+        return round(dy + max(0, (dx - dy) / 2))
+
+
+class CityMap:
+    # Maybe add support for hex < pixel
+    def __init__(self, heights: np.array, pixel_size_m: float, hex_radius_m: float, flight_height: float):
+        self.heights_map: np.array = heights
+        self.pixel_size_m = pixel_size_m
+        self.hex_radius_m = hex_radius_m
+        self.flight_height = flight_height
+
+        if self.pixel_size_m > 4*self.hex_radius_m:
+            raise NotImplementedError("This implementation does not support the case where hexagons are smaller than pixels. Hexagons should have radius at least 4 times pixel size")
+
+    @property
+    def hex_radius_in_px(self) -> float:
+        return self.hex_radius_m/self.pixel_size_m
+
     def _axial_hex_round(self, q: float, r: float) -> HexCoordinate:
         cube = HexHelper.axial_to_cube(q, r)
-        cube_rounded = self._cube_round(*cube)
+        cube_rounded = HexHelper.cube_round(*cube)
         x, y = HexHelper.cube_to_doublewidth(*cube_rounded)
 
         if abs(x - int(x)) > 0.00001 or abs(y - int(y)) > 0.00001:

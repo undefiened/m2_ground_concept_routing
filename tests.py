@@ -1,9 +1,10 @@
+from typing import List
 from unittest import TestCase
 
 import simplejson
 import numpy as np
 
-from main import HexMap, HexCoordinate, PathPlanner, Request, GDP, CityMap
+from main import HexMap, HexCoordinate, PathPlanner, Request, GDP, CityMap, HexHelper, Flightplan
 
 
 class HexCoordinateTestCase(TestCase):
@@ -345,3 +346,137 @@ class CityMapTestCase(TestCase):
 
         with open('./results/test_map.json', 'w') as f:
             simplejson.dump(data, f)
+
+
+class LineDrawingTestCase(TestCase):
+    def test_simple_line_draw_1(self):
+        line = HexHelper.line_drawing(HexCoordinate(0, 0), HexCoordinate(6, 6))
+        self.assertEqual(7, len(line))
+        self.assertEqual([
+            HexCoordinate(0, 0),
+            HexCoordinate(1, 1),
+            HexCoordinate(2, 2),
+            HexCoordinate(3, 3),
+            HexCoordinate(4, 4),
+            HexCoordinate(5, 5),
+            HexCoordinate(6, 6),], line)
+
+    def test_simple_line_draw_2(self):
+        line = HexHelper.line_drawing(HexCoordinate(0, 0), HexCoordinate(4, 2))
+        self.assertEqual(4, len(line))
+        self.assertEqual([
+            HexCoordinate(0, 0),
+            HexCoordinate(1, 1),
+            HexCoordinate(3, 1),
+            HexCoordinate(4, 2),
+        ], line)
+
+    def test_rounding_consistent(self):
+        line = HexHelper.line_drawing(HexCoordinate(4, 0), HexCoordinate(4, 2))
+        self.assertEqual(3, len(line))
+        self.assertEqual([
+            HexCoordinate(4, 0),
+            HexCoordinate(3, 1),
+            HexCoordinate(4, 2),
+        ], line)
+
+        line = HexHelper.line_drawing(HexCoordinate(4, 0), HexCoordinate(4, 4))
+        self.assertEqual(5, len(line))
+        self.assertEqual([
+            HexCoordinate(4, 0),
+            HexCoordinate(3, 1),
+            HexCoordinate(4, 2),
+            HexCoordinate(3, 3),
+            HexCoordinate(4, 4),
+        ], line)
+
+        line = HexHelper.line_drawing(HexCoordinate(8, 0), HexCoordinate(8, 2))
+        self.assertEqual(3, len(line))
+        self.assertEqual([
+            HexCoordinate(8, 0),
+            HexCoordinate(7, 1),
+            HexCoordinate(8, 2),
+        ], line)
+
+        # line = HexHelper.line_drawing(HexCoordinate(0, 0), HexCoordinate(3, 1))
+        # self.assertEqual(3, len(line))
+        # self.assertEqual([
+        #     HexCoordinate(0, 0),
+        #     HexCoordinate(1, 1),
+        #     HexCoordinate(3, 1),
+        # ], line)
+
+
+class PathSmoothingTest(TestCase):
+    def _get_points(self, points) -> List[HexCoordinate]:
+        return [x[1] for x in points]
+
+    def test_simple_smoothing(self):
+        flightplan = Flightplan([
+            (0, HexCoordinate(0, 0)),
+            (1, HexCoordinate(1, 1)),
+            (2, HexCoordinate(3, 1)),
+            (3, HexCoordinate(4, 2)),
+        ])
+
+        smoothed = self._get_points(flightplan.smoothed())
+
+        self.assertEqual(len(smoothed), 2)
+        self.assertEqual(smoothed, [HexCoordinate(0, 0), HexCoordinate(4, 2)])
+
+    def test_simple_smoothing_in_middle(self):
+        flightplan = Flightplan([
+            (-1, HexCoordinate(2, 0)),
+            (0, HexCoordinate(0, 0)),
+            (1, HexCoordinate(1, 1)),
+            (2, HexCoordinate(3, 1)),
+            (3, HexCoordinate(4, 2)),
+            (4, HexCoordinate(2, 2)),
+        ])
+
+        smoothed = self._get_points(flightplan.smoothed())
+        self.assertEqual(len(smoothed), 4)
+        self.assertEqual(smoothed, [
+            HexCoordinate(2, 0),
+            HexCoordinate(0, 0),
+            HexCoordinate(4, 2),
+            HexCoordinate(2, 2),
+        ])
+
+    def test_simple_smoothing_in_end(self):
+        flightplan = Flightplan([
+            (-2, HexCoordinate(1, 1)),
+            (-1, HexCoordinate(2, 0)),
+            (0, HexCoordinate(0, 0)),
+            (1, HexCoordinate(1, 1)),
+            (2, HexCoordinate(3, 1)),
+            (3, HexCoordinate(4, 2)),
+        ])
+
+        smoothed = self._get_points(flightplan.smoothed())
+        self.assertEqual(len(smoothed), 4)
+        self.assertEqual(smoothed, [
+            HexCoordinate(1, 1),
+            HexCoordinate(2, 0),
+            HexCoordinate(0, 0),
+            HexCoordinate(4, 2),
+        ])
+
+    def test_simple_smoothing_in_beginning(self):
+        flightplan = Flightplan([
+            (0, HexCoordinate(0, 0)),
+            (1, HexCoordinate(1, 1)),
+            (2, HexCoordinate(3, 1)),
+            (3, HexCoordinate(4, 2)),
+            (4, HexCoordinate(2, 2)),
+            (5, HexCoordinate(3, 3)),
+        ])
+
+        smoothed = self._get_points(flightplan.smoothed())
+        self.assertEqual(len(smoothed), 4)
+        self.assertEqual(smoothed, [
+            HexCoordinate(0, 0),
+            HexCoordinate(4, 2),
+            HexCoordinate(2, 2),
+            HexCoordinate(3, 3),
+        ])
