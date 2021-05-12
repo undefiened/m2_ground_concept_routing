@@ -251,8 +251,10 @@ class PathPlanner:
     SOURCE_NODE_ID = -1
     SINK_NODE_ID = -2
 
+    DEVIATION_PENALTY_DISTANCE_MULTIPLIER = 0.000001
+
     def __init__(self, obstacles: List[HexCoordinate], requests: List[Request], map_width, map_height,
-                 hex_radius_m, drone_radius_m, gdp, city_map=None):
+                 hex_radius_m, drone_radius_m, gdp, city_map=None, punish_deviation=False):
         self.flightplans: List[Flightplan] = []
         self.obstacles = obstacles
         self.requests = requests
@@ -261,8 +263,19 @@ class PathPlanner:
         self.drone_radius_m = drone_radius_m
         self.drone_radius_hex = ceil(drone_radius_m/hex_radius_m)
         self.gdp = gdp
+        self.punish_deviation = punish_deviation
 
         self.city_map = city_map
+
+    def _get_deviation_penalty(self, to_coord: HexCoordinate, request: Request):
+        if not self.punish_deviation:
+            return 0
+
+        line = HexHelper.line_drawing(request.start_point, request.end_point)
+
+        min_dist = min([HexHelper.hex_distance(point, to_coord) for point in line])
+
+        return min_dist*self.DEVIATION_PENALTY_DISTANCE_MULTIPLIER
 
     def _get_all_neighbours(self, coordinate: HexCoordinate, time: int, request: Request) -> List[Tuple[int, float]]:
         viable_neighbours_ids: List[Tuple[int, float]] = []
@@ -278,7 +291,7 @@ class PathPlanner:
             if neighbours[neigh_i] not in occupied:
                 if not (self.jumping_can_occur() and (neighbours[neigh_i], coordinate) in drones_movements):
                     viable_neighbours_ids.append(
-                        (self.time_ext_node_id(node_neighbour_id, time + 1), 1)
+                        (self.time_ext_node_id(node_neighbour_id, time + 1), 1 + self._get_deviation_penalty(self.map.int_to_coord(node_neighbour_id), request))
                     )
 
         if coordinate not in occupied:

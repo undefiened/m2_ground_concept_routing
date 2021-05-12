@@ -480,3 +480,59 @@ class PathSmoothingTest(TestCase):
             HexCoordinate(2, 2),
             HexCoordinate(3, 3),
         ])
+
+
+class DeviationPenaltyTestCase(TestCase):
+    def _get_flightplan_points(self, flightplan):
+        return [x for (t, x) in sorted(flightplan.points.items(), key=lambda x : x[0])]
+
+    def test_simple_route(self):
+        line = HexHelper.line_drawing(HexCoordinate(0, 0), HexCoordinate(6, 4))
+
+        width = 20
+        height = 20
+
+        requests_data = [
+            {'from': [0, 0], 'to': [6, 4], 'start_time': 0},
+        ]
+        planner = PathPlanner(obstacles=[],
+                              requests=[Request(x['from'], x['to'], x['start_time']) for x in requests_data],
+                              map_width=width, map_height=height, hex_radius_m=1, drone_radius_m=1, gdp=GDP(1000, 1),
+                              punish_deviation=True)
+        flightplans = planner.resolve_all()
+
+        self.assertEqual(6, len(line))
+        self.assertEqual(6, len(flightplans[0].points))
+        self.assertEqual(line, self._get_flightplan_points(flightplans[0]))
+
+    def test_route_around_obstacle(self):
+        line = HexHelper.line_drawing(HexCoordinate(0, 2), HexCoordinate(10, 2))
+
+        width = 20
+        height = 20
+
+        requests_data = [
+            {'from': [0, 2], 'to': [10, 2], 'start_time': 0},
+        ]
+        planner = PathPlanner(obstacles=[HexCoordinate(2, 2), ],
+                              requests=[Request(x['from'], x['to'], x['start_time']) for x in requests_data],
+                              map_width=width, map_height=height, hex_radius_m=1, drone_radius_m=1, gdp=GDP(1000, 1),
+                              punish_deviation=True)
+        flightplans = planner.resolve_all()
+
+
+        print(line)
+        print(self._get_flightplan_points(flightplans[0]))
+
+        self.assertEqual(6, len(line))
+        self.assertEqual(7, len(flightplans[0].points))
+
+        self.assertEqual([
+            HexCoordinate(0, 2),
+            HexCoordinate(1, 1),
+            HexCoordinate(3, 1),
+            HexCoordinate(4, 2),
+            HexCoordinate(6, 2),
+            HexCoordinate(8, 2),
+            HexCoordinate(10, 2),
+        ], self._get_flightplan_points(flightplans[0]))
