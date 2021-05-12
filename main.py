@@ -5,7 +5,7 @@ import random
 import time
 from dataclasses import dataclass
 from math import ceil
-from typing import List, Dict, Tuple, Set, Union
+from typing import List, Dict, Tuple, Set, Union, Optional
 
 import simplejson
 from igraph import *
@@ -21,8 +21,9 @@ class Request:
     start_point: "HexCoordinate"
     end_point: "HexCoordinate"
     start_time: int
+    drone_radius_m: Optional[float]
 
-    def __init__(self, start: Union[Tuple[int, int], "HexCoordinate"], end: Union[Tuple[int, int], "HexCoordinate"], start_time: int):
+    def __init__(self, start: Union[Tuple[int, int], "HexCoordinate"], end: Union[Tuple[int, int], "HexCoordinate"], start_time: int, drone_radius_m = None):
         if isinstance(start, HexCoordinate):
             self.start_point = start
         else:
@@ -35,6 +36,11 @@ class Request:
 
         self.start_time = start_time
 
+        self.drone_radius_m = drone_radius_m
+
+    def is_radius_defined(self) -> bool:
+        return self.drone_radius_m is not None
+
 
 @dataclass
 class GDP:
@@ -45,12 +51,13 @@ class GDP:
 class Flightplan:
     ONE_TICK_TO_LAND = False
 
-    def __init__(self, points: List[Tuple[int, "HexCoordinate"]]):
+    def __init__(self, points: List[Tuple[int, "HexCoordinate"]], radius_hex):
         self.start_time = min([x[0] for x in points])
         self._end_time = max([x[0] for x in points])
 
         self.points: Dict[(int, HexCoordinate)] = {}
         self._fill_points(points)
+        self.radius_hex = radius_hex
 
     def _fill_points(self, points: List[Tuple[int, "HexCoordinate"]]):
         for (time, point) in points:
@@ -254,18 +261,26 @@ class PathPlanner:
     DEVIATION_PENALTY_DISTANCE_MULTIPLIER = 0.000001
 
     def __init__(self, obstacles: List[HexCoordinate], requests: List[Request], map_width, map_height,
-                 hex_radius_m, drone_radius_m, gdp, city_map=None, punish_deviation=False):
+                 hex_radius_m, default_drone_radius_m, gdp, city_map=None, punish_deviation=False):
         self.flightplans: List[Flightplan] = []
         self.obstacles = obstacles
-        self.requests = requests
+        self.requests: List[Request] = requests
         self.map = HexMap(width=map_width, height=map_height)
         self.hex_radius_m = hex_radius_m
-        self.drone_radius_m = drone_radius_m
-        self.drone_radius_hex = ceil(drone_radius_m/hex_radius_m)
+        self.default_drone_radius_m = default_drone_radius_m
+        self.default_drone_radius_hex = self._radius_m_to_hex(default_drone_radius_m)
         self.gdp = gdp
         self.punish_deviation = punish_deviation
-
         self.city_map = city_map
+
+    def _radius_m_to_hex(self, radius_m: float) -> int:
+        return ceil(radius_m / self.hex_radius_m)
+
+    def _request_radius_hex(self, request: Request) -> int:
+        if request.is_radius_defined():
+            return self._radius_m_to_hex(request.drone_radius_m)
+        else:
+            return self.default_drone_radius_hex
 
     def _get_deviation_penalty(self, to_coord: HexCoordinate, request: Request):
         if not self.punish_deviation:
@@ -280,7 +295,7 @@ class PathPlanner:
     def _get_all_neighbours(self, coordinate: HexCoordinate, time: int, request: Request) -> List[Tuple[int, float]]:
         viable_neighbours_ids: List[Tuple[int, float]] = []
 
-        occupied = self.list_of_occupied_hexes(time + 1)
+        occupied = self._list_of_occupied_hexes_for_request(time + 1, request)
         if self.jumping_can_occur():
             drones_movements = self.list_of_pending_drone_movements(time + 1)
 
@@ -316,7 +331,7 @@ class PathPlanner:
 
         for i in range(self.gdp.max_time+1):
             weight = i*self.gdp.penalty
-            occupied = self.list_of_occupied_hexes(request.start_time + i)
+            occupied = self._list_of_occupied_hexes_for_request(request.start_time + i, request)
             coord = self.time_ext_node_id(self.map.coord_to_int(request.start_point), request.start_time + i)
 
             if request.start_point not in occupied:
@@ -371,21 +386,29 @@ class PathPlanner:
         return pending_movements
 
     def jumping_can_occur(self):
-        return self.drone_radius_hex == 1
+        radii_hex = [self._request_radius_hex(request) for request in self.requests]
+        return radii_hex.count(1) > 1
 
-    def list_of_occupied_hexes(self, time: int, render_mode: bool = False) -> List[HexCoordinate]:
+    def list_of_occupied_hexes(self, time: int):
+        return self._list_of_occupied_hexes(time, 0)
+
+    def _list_of_occupied_hexes_for_request(self, time: int, request: Request) -> List[HexCoordinate]:
+        return self._list_of_occupied_hexes(time, self._request_radius_hex(request)-1)
+
+    def _list_of_occupied_hexes(self, time: int, additional_radius: int):
         occupied_hexes: List[HexCoordinate] = []
 
         for plan in self.flightplans:
             if plan.is_present_at_time(time):
-                radius = self.drone_radius_hex * 2 - 1 if not render_mode else self.drone_radius_hex
-                hexes_covered_by_flightplan = [x for x in self.map.spiral(plan.position_at_time(time), radius) if self.map.is_feasible_coordinate(x)]
+                radius = plan.radius_hex + additional_radius
+                hexes_covered_by_flightplan = [x for x in self.map.spiral(plan.position_at_time(time), radius) if
+                                               self.map.is_feasible_coordinate(x)]
                 occupied_hexes.extend(hexes_covered_by_flightplan)
 
         for obstacle in self.obstacles:
-            radius = self.drone_radius_hex if not render_mode else 1
+            radius = additional_radius + 1
             hexes_covered_by_obstacle = [x for x in self.map.spiral(obstacle, radius) if
-                                           self.map.is_feasible_coordinate(x)]
+                                         self.map.is_feasible_coordinate(x)]
             occupied_hexes.extend(hexes_covered_by_obstacle)
 
         return occupied_hexes
@@ -409,7 +432,7 @@ class PathPlanner:
         for i, node_id in enumerate(path):
             points.append((self.map.int_time(node_id), self.map.int_to_coord(node_id)))
 
-        new_flightplan = Flightplan(points=points)
+        new_flightplan = Flightplan(points=points, radius_hex=self._request_radius_hex(request))
 
         return new_flightplan
 
@@ -419,7 +442,7 @@ class PathPlanner:
                 'width': self.map.width,
                 'height': self.map.height
             },
-            'drones_radius': self.drone_radius_hex,
+            'drones_radius': self.default_drone_radius_hex,
             'flightplans': [],
             'occupied_hexes': {},
             'obstacles': [(x.x, x.y) for x in self.obstacles]
@@ -444,7 +467,7 @@ class PathPlanner:
 
         for time in range(min_time, max_time + 1):
             data['occupied_hexes'][time] = [(point.x, point.y) for point in
-                                            self.list_of_occupied_hexes(time, render_mode=True)]
+                                            self.list_of_occupied_hexes(time)]
 
         if self.city_map is not None:
             data['heights'] = self.city_map.heights_map.tolist()
@@ -620,7 +643,7 @@ def run_ny_map():
 
         obstacles = city_map.obstacles()
         planner = PathPlanner(obstacles=obstacles, requests=requests, map_width=width, map_height=height,
-                              drone_radius_m=1, hex_radius_m=1,
+                              default_drone_radius_m=1, hex_radius_m=1,
                               gdp=GDP(max_time=data['gdp']['max_time'], penalty=data['gdp']['penalty']), city_map=city_map)
         planner.resolve_all()
 
@@ -661,7 +684,7 @@ def run_simple():
         obstacles_data = data['obstacles']
         obstacles = [HexCoordinate(x=x[0], y=x[1]) for x in obstacles_data]
         planner = PathPlanner(obstacles=obstacles, requests=requests, map_width=width, map_height=height,
-                              drone_radius_m=data['radius'], hex_radius_m=1,
+                              default_drone_radius_m=data['radius'], hex_radius_m=1,
                               gdp=GDP(max_time=data['gdp']['max_time'], penalty=data['gdp']['penalty']))
         planner.resolve_all()
 
