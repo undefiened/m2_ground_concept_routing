@@ -520,10 +520,6 @@ class DeviationPenaltyTestCase(TestCase):
                               punish_deviation=True)
         flightplans = planner.resolve_all()
 
-
-        print(line)
-        print(self._get_flightplan_points(flightplans[0]))
-
         self.assertEqual(6, len(line))
         self.assertEqual(7, len(flightplans[0].points))
 
