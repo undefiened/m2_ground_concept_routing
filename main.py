@@ -36,6 +36,9 @@ class Request:
 
         self.start_time = start_time
 
+        if self.start_time < 0:
+            raise Exception("The requested start time cannot be negative")
+
         self.drone_radius_m = drone_radius_m
 
     def is_radius_defined(self) -> bool:
@@ -192,6 +195,9 @@ class HexMap:
         return HexCoordinate(x=x, y=y)
 
     def coord_to_int(self, coord: HexCoordinate) -> int:
+        if coord.x < 0 or coord.y < 0:
+            raise Exception("Coordinates cannot be negative")
+
         if coord.x % 2 == 0 and coord.y % 2 == 0:
             return round(coord.y * self.width + coord.x / 2)
         else:
@@ -321,6 +327,32 @@ class PathPlanner:
 
         return viable_neighbours_ids
 
+    def _is_destination_reachable(self, request: Request) -> bool:
+        G = nx.Graph()
+
+        G.add_nodes_from(range(self.map.number_of_nodes))
+
+        start_point_id = self.map.coord_to_int(request.start_point)
+        end_point_id = self.map.coord_to_int(request.end_point)
+        edges = []
+
+        occupied = self._list_of_occupied_by_obstacles_hexes(0, self._request_radius_hex(request)-1)
+
+        for i in range(self.map.number_of_nodes):
+            coord = self.map.int_to_coord(i)
+            if coord not in occupied:
+                neighbours = self.map.get_neighbours(self.map.int_to_coord(i))
+
+                for neighbour_coord in neighbours:
+                    neighbour_id = self.map.coord_to_int(neighbour_coord)
+                    if neighbour_coord not in occupied:
+                        edges.append((i, neighbour_id))
+
+        G.add_edges_from(edges)
+
+        return nx.has_path(G, start_point_id, end_point_id)
+
+
     def _find_shortest_path(self, request: Request) -> List[int]:
         self._visited_nodes = set()
         self._nodes_weights = {}
@@ -395,8 +427,8 @@ class PathPlanner:
     def _list_of_occupied_hexes_for_request(self, time: int, request: Request) -> List[HexCoordinate]:
         return self._list_of_occupied_hexes(time, self._request_radius_hex(request)-1)
 
-    def _list_of_occupied_hexes(self, time: int, additional_radius: int):
-        occupied_hexes: List[HexCoordinate] = []
+    def _list_of_occupied_by_drones_hexes(self, time: int, additional_radius: int) -> List[HexCoordinate]:
+        occupied_hexes = []
 
         for plan in self.flightplans:
             if plan.is_present_at_time(time):
@@ -405,11 +437,25 @@ class PathPlanner:
                                                self.map.is_feasible_coordinate(x)]
                 occupied_hexes.extend(hexes_covered_by_flightplan)
 
+        return occupied_hexes
+
+    def _list_of_occupied_by_obstacles_hexes(self, time: int, additional_radius: int) -> List[HexCoordinate]:
+        occupied_hexes = []
+
         for obstacle in self.obstacles:
             radius = additional_radius + 1
             hexes_covered_by_obstacle = [x for x in self.map.spiral(obstacle, radius) if
                                          self.map.is_feasible_coordinate(x)]
             occupied_hexes.extend(hexes_covered_by_obstacle)
+
+        return occupied_hexes
+
+    def _list_of_occupied_hexes(self, time: int, additional_radius: int) -> List[HexCoordinate]:
+        occupied_hexes: List[HexCoordinate] = []
+
+        occupied_hexes.extend(self._list_of_occupied_by_drones_hexes(time, additional_radius))
+
+        occupied_hexes.extend(self._list_of_occupied_by_obstacles_hexes(time, additional_radius))
 
         return occupied_hexes
 
@@ -422,6 +468,9 @@ class PathPlanner:
         return self.flightplans
 
     def resolve_request(self, request: Request) -> Flightplan:
+        if not self._is_destination_reachable(request):
+            raise Exception("The destination is not reachable for request {}".format(request))
+
         path = self._find_shortest_path(request)
 
         points = []

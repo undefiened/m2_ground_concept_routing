@@ -1,6 +1,7 @@
 from typing import List
 from unittest import TestCase
 
+import pytest
 import simplejson
 import numpy as np
 
@@ -595,3 +596,104 @@ class DifferentRadiiTestCase(TestCase):
             HexCoordinate(8, 0),
             HexCoordinate(10, 0),
         ], self._get_flightplan_points(flightplans[0]))
+
+
+class NoViablePathDetectionTestCase(TestCase):
+    @pytest.mark.timeout(5)
+    def test_simple(self):
+        requests_data = [
+            {'from': [0, 0], 'to': [8, 0], 'start_time': 0, 'radius': 1},
+        ]
+        obstacles = [
+            HexCoordinate(2, 0),
+            HexCoordinate(3, 1),
+            HexCoordinate(2, 2),
+            HexCoordinate(3, 3),
+            HexCoordinate(2, 4),
+            HexCoordinate(3, 5),
+        ]
+        planner = PathPlanner(obstacles=obstacles,
+                              requests=[Request(x['from'], x['to'], x['start_time'], drone_radius_m=x['radius']) for x
+                                        in requests_data],
+                              map_width=5, map_height=5, hex_radius_m=1, default_drone_radius_m=1,
+                              gdp=GDP(100, 1),
+                              punish_deviation=True)
+
+        self.assertRaises(Exception, planner.resolve_all)
+
+    @pytest.mark.timeout(5)
+    def test_radius(self):
+        requests_data = [
+            {'from': [0, 0], 'to': [8, 0], 'start_time': 0, 'radius': 2},
+        ]
+        obstacles = [
+            HexCoordinate(3, 1),
+            HexCoordinate(2, 2),
+            HexCoordinate(3, 3),
+            HexCoordinate(2, 4),
+            HexCoordinate(3, 5),
+        ]
+        planner = PathPlanner(obstacles=obstacles,
+                              requests=[Request(x['from'], x['to'], x['start_time'], drone_radius_m=x['radius']) for x
+                                        in requests_data],
+                              map_width=5, map_height=5, hex_radius_m=1, default_drone_radius_m=1,
+                              gdp=GDP(100, 1),
+                              punish_deviation=True)
+
+        self.assertRaises(Exception, planner.resolve_all)
+
+    def test_surrounded(self):
+        requests_data = [
+            {'from': [0, 0], 'to': [8, 0], 'start_time': 0, 'radius': 2},
+        ]
+        obstacles = [
+            HexCoordinate(6, 0),
+            HexCoordinate(7, 1),
+            HexCoordinate(9, 1),
+            HexCoordinate(10, 0),
+        ]
+        planner = PathPlanner(obstacles=obstacles,
+                              requests=[Request(x['from'], x['to'], x['start_time'], drone_radius_m=x['radius']) for x
+                                        in requests_data],
+                              map_width=10, map_height=10, hex_radius_m=1, default_drone_radius_m=1,
+                              gdp=GDP(100, 1),
+                              punish_deviation=True)
+
+        self.assertRaises(Exception, planner.resolve_all)
+
+    def test_surrounded_from_all_sides(self):
+        requests_data = [
+            {'from': [0, 0], 'to': [7, 3], 'start_time': 0, 'radius': 1},
+        ]
+        obstacles = [
+            HexCoordinate(6, 2),
+            HexCoordinate(8, 2),
+            HexCoordinate(9, 3),
+            HexCoordinate(8, 4),
+            HexCoordinate(6, 4),
+            HexCoordinate(5, 3),
+        ]
+        planner = PathPlanner(obstacles=obstacles,
+                              requests=[Request(x['from'], x['to'], x['start_time'], drone_radius_m=x['radius']) for x
+                                        in requests_data],
+                              map_width=10, map_height=10, hex_radius_m=1, default_drone_radius_m=1,
+                              gdp=GDP(100, 1),
+                              punish_deviation=True)
+
+        self.assertRaises(Exception, planner.resolve_all)
+
+    def test_destination_blocked(self):
+        requests_data = [
+            {'from': [0, 0], 'to': [7, 3], 'start_time': 0, 'radius': 1},
+        ]
+        obstacles = [
+            HexCoordinate(7, 3),
+        ]
+        planner = PathPlanner(obstacles=obstacles,
+                              requests=[Request(x['from'], x['to'], x['start_time'], drone_radius_m=x['radius']) for x
+                                        in requests_data],
+                              map_width=10, map_height=10, hex_radius_m=1, default_drone_radius_m=1,
+                              gdp=GDP(100, 1),
+                              punish_deviation=True)
+
+        self.assertRaises(Exception, planner.resolve_all)
