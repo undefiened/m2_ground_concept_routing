@@ -50,6 +50,17 @@ class Request:
     def has_time_uncertainty(self) -> bool:
         return self.time_uncertainty is not None
 
+    @staticmethod
+    def from_dict(dict: Dict) -> "Request":
+        kwargs = {}
+        if 'radius' in dict:
+            kwargs['drone_radius_m'] = dict['radius']
+
+        if 'time_uncertainty' in dict:
+            kwargs['time_uncertainty'] = dict['time_uncertainty']
+
+        return Request(dict['from'], dict['to'], dict['start_time'], **kwargs)
+
 
 @dataclass
 class GDP:
