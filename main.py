@@ -22,8 +22,9 @@ class Request:
     end_point: "HexCoordinate"
     start_time: int
     drone_radius_m: Optional[float]
+    time_uncertainty: int
 
-    def __init__(self, start: Union[Tuple[int, int], "HexCoordinate"], end: Union[Tuple[int, int], "HexCoordinate"], start_time: int, drone_radius_m = None):
+    def __init__(self, start: Union[Tuple[int, int], "HexCoordinate"], end: Union[Tuple[int, int], "HexCoordinate"], start_time: int, drone_radius_m = None, time_uncertainty=None):
         if isinstance(start, HexCoordinate):
             self.start_point = start
         else:
@@ -41,8 +42,13 @@ class Request:
 
         self.drone_radius_m = drone_radius_m
 
+        self.time_uncertainty = time_uncertainty
+
     def is_radius_defined(self) -> bool:
         return self.drone_radius_m is not None
+
+    def has_time_uncertainty(self) -> bool:
+        return self.time_uncertainty is not None
 
 
 @dataclass
@@ -352,7 +358,6 @@ class PathPlanner:
 
         return nx.has_path(G, start_point_id, end_point_id)
 
-
     def _find_shortest_path(self, request: Request) -> List[int]:
         self._visited_nodes = set()
         self._nodes_weights = {}
@@ -421,41 +426,41 @@ class PathPlanner:
         radii_hex = [self._request_radius_hex(request) for request in self.requests]
         return radii_hex.count(1) > 1
 
-    def list_of_occupied_hexes(self, time: int):
+    def list_of_occupied_hexes(self, time: int) -> Set[HexCoordinate]:
         return self._list_of_occupied_hexes(time, 0)
 
-    def _list_of_occupied_hexes_for_request(self, time: int, request: Request) -> List[HexCoordinate]:
+    def _list_of_occupied_hexes_for_request(self, time: int, request: Request) -> Set[HexCoordinate]:
         return self._list_of_occupied_hexes(time, self._request_radius_hex(request)-1)
 
-    def _list_of_occupied_by_drones_hexes(self, time: int, additional_radius: int) -> List[HexCoordinate]:
-        occupied_hexes = []
+    def _list_of_occupied_by_drones_hexes(self, time: int, additional_radius: int) -> Set[HexCoordinate]:
+        occupied_hexes = set()
 
         for plan in self.flightplans:
             if plan.is_present_at_time(time):
                 radius = plan.radius_hex + additional_radius
                 hexes_covered_by_flightplan = [x for x in self.map.spiral(plan.position_at_time(time), radius) if
                                                self.map.is_feasible_coordinate(x)]
-                occupied_hexes.extend(hexes_covered_by_flightplan)
+                occupied_hexes.update(hexes_covered_by_flightplan)
 
         return occupied_hexes
 
-    def _list_of_occupied_by_obstacles_hexes(self, time: int, additional_radius: int) -> List[HexCoordinate]:
-        occupied_hexes = []
+    def _list_of_occupied_by_obstacles_hexes(self, time: int, additional_radius: int) -> Set[HexCoordinate]:
+        occupied_hexes = set()
 
         for obstacle in self.obstacles:
             radius = additional_radius + 1
             hexes_covered_by_obstacle = [x for x in self.map.spiral(obstacle, radius) if
                                          self.map.is_feasible_coordinate(x)]
-            occupied_hexes.extend(hexes_covered_by_obstacle)
+            occupied_hexes.update(hexes_covered_by_obstacle)
 
         return occupied_hexes
 
-    def _list_of_occupied_hexes(self, time: int, additional_radius: int) -> List[HexCoordinate]:
-        occupied_hexes: List[HexCoordinate] = []
+    def _list_of_occupied_hexes(self, time: int, additional_radius: int) -> Set[HexCoordinate]:
+        occupied_hexes: Set[HexCoordinate] = set()
 
-        occupied_hexes.extend(self._list_of_occupied_by_drones_hexes(time, additional_radius))
+        occupied_hexes.update(self._list_of_occupied_by_drones_hexes(time, additional_radius))
 
-        occupied_hexes.extend(self._list_of_occupied_by_obstacles_hexes(time, additional_radius))
+        occupied_hexes.update(self._list_of_occupied_by_obstacles_hexes(time, additional_radius))
 
         return occupied_hexes
 
