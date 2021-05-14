@@ -16,6 +16,10 @@ import numpy as np
 DEBUG = False
 
 
+class PathNotFoundException(Exception):
+    """Raises if there is no path for the request"""
+
+
 @dataclass
 class Request:
     start_point: "HexCoordinate"
@@ -418,6 +422,9 @@ class PathPlanner:
 
                 self._visited_nodes.add(current_node_id)
 
+        if self.SINK_NODE_ID not in self._previous_nodes:
+            raise PathNotFoundException("Cannot find a path for request {}".format(request))
+
         path = []
         previous_node = self._previous_nodes[self.SINK_NODE_ID]
 
@@ -497,7 +504,7 @@ class PathPlanner:
 
     def resolve_request(self, request: Request) -> Flightplan:
         if not self._is_destination_reachable(request):
-            raise Exception("The destination is not reachable for request {}".format(request))
+            raise PathNotFoundException("The destination is not reachable for request {}".format(request))
 
         path = self._find_shortest_path(request)
 

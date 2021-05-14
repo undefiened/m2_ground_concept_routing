@@ -5,7 +5,7 @@ import pytest
 import simplejson
 import numpy as np
 
-from main import HexMap, HexCoordinate, PathPlanner, Request, GDP, CityMap, HexHelper, Flightplan
+from main import HexMap, HexCoordinate, PathPlanner, Request, GDP, CityMap, HexHelper, Flightplan, PathNotFoundException
 
 
 class HexCoordinateTestCase(TestCase):
@@ -616,7 +616,7 @@ class NoViablePathDetectionTestCase(TestCase):
                               gdp=GDP(100, 1),
                               punish_deviation=True)
 
-        self.assertRaises(Exception, planner.resolve_all)
+        self.assertRaises(PathNotFoundException, planner.resolve_all)
 
     @pytest.mark.timeout(5)
     def test_radius(self):
@@ -636,7 +636,7 @@ class NoViablePathDetectionTestCase(TestCase):
                               gdp=GDP(100, 1),
                               punish_deviation=True)
 
-        self.assertRaises(Exception, planner.resolve_all)
+        self.assertRaises(PathNotFoundException, planner.resolve_all)
 
     def test_surrounded(self):
         requests_data = [
@@ -654,7 +654,7 @@ class NoViablePathDetectionTestCase(TestCase):
                               gdp=GDP(100, 1),
                               punish_deviation=True)
 
-        self.assertRaises(Exception, planner.resolve_all)
+        self.assertRaises(PathNotFoundException, planner.resolve_all)
 
     def test_surrounded_from_all_sides(self):
         requests_data = [
@@ -674,7 +674,7 @@ class NoViablePathDetectionTestCase(TestCase):
                               gdp=GDP(100, 1),
                               punish_deviation=True)
 
-        self.assertRaises(Exception, planner.resolve_all)
+        self.assertRaises(PathNotFoundException, planner.resolve_all)
 
     def test_destination_blocked(self):
         requests_data = [
@@ -689,7 +689,7 @@ class NoViablePathDetectionTestCase(TestCase):
                               gdp=GDP(100, 1),
                               punish_deviation=True)
 
-        self.assertRaises(Exception, planner.resolve_all)
+        self.assertRaises(PathNotFoundException, planner.resolve_all)
 
 
 class TimeUncertaintyTestCase(TestCase):
@@ -954,3 +954,16 @@ class TimeUncertaintyTestCase(TestCase):
 
         with open('./results/test_results.json', 'w') as wf:
             simplejson.dump(data, wf)
+
+    def test_impossible_time_uncertainty_with_radius(self):
+        requests_data = [
+            {'from': [10, 0], 'to': [0, 0], 'start_time': 0, 'radius': 2, 'time_uncertainty': 2},
+            {'from': [0, 0], 'to': [10, 0], 'start_time': 0, 'radius': 2, 'time_uncertainty': 2},
+        ]
+        planner = PathPlanner(obstacles=[],
+                              requests=[Request.from_dict(x) for x in requests_data],
+                              map_width=30, map_height=30, hex_radius_m=1, default_drone_radius_m=1,
+                              gdp=GDP(0, 1),
+                              punish_deviation=True)
+
+        self.assertRaises(PathNotFoundException, planner.resolve_all)
