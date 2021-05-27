@@ -1,0 +1,13 @@
+{"requests":  [
+  {"from": [150, 200], "to": [700, 650], "start_time": 0},
+  {"from": [150, 200], "to": [700, 650], "start_time": 2},
+  {"from": [150, 200], "to": [700, 650], "start_time": 4},
+  {"from": [150, 200], "to": [700, 650], "start_time": 6},
+  {"from": [150, 200], "to": [700, 650], "start_time": 8}
+],
+"radius": 1,
+"gdp": {
+  "max_time": 50,
+  "penalty": 1
+},
+"obstacles": []}
