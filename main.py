@@ -12,6 +12,7 @@ from igraph import *
 import networkx as nx
 import numpy as np
 
+from misc_functions import _is_feasible_coordinate, _list_of_occupied_by_obstacles_hexes, HexCoordinate
 
 DEBUG = False
 
@@ -142,47 +143,6 @@ class Flightplan:
         return smoothed_points
 
 
-@functools.total_ordering
-class HexCoordinate:
-    # By default in doublewidth coordinates (see, e.g., https://www.redblobgames.com/grids/hexagons/#coordinates-doubled)
-    def __init__(self, x: int, y: int):
-        if (x % 2 == 0) != (y % 2 == 0):
-            raise Exception('Wrong hex coordinate!')
-
-        self.x: int = x
-        self.y: int = y
-
-    def to_cube(self) -> Tuple[int, int, int]:
-        x = (self.x - self.y) / 2
-        z = self.y
-        y = -x - z
-        return (int(x), int(y), z)
-
-    @staticmethod
-    def from_cube(cube: Tuple[int, int, int]) -> "HexCoordinate":
-        col = 2 * cube[0] + cube[2]
-        row = cube[2]
-        return HexCoordinate(col, row)
-
-    def __repr__(self):
-        return self.__str__()
-
-    def __str__(self):
-        return "HexCoord(x={}, y={})".format(self.x, self.y)
-
-    def __lt__(self, other: "HexCoordinate") -> bool:
-        if self.y < other.y:
-            return True
-        elif self.y == other.y and self.x < other.x:
-            return True
-        else:
-            return False
-
-    def __eq__(self, other: "HexCoordinate") -> bool:
-        return self.x == other.x and self.y == other.y
-
-    def __hash__(self) -> int:
-        return hash((self.x, self.y))
 
 
 class HexMap:
@@ -232,30 +192,13 @@ class HexMap:
         neighbours: List[HexCoordinate] = []
 
         for (x_offset, y_offset) in self.DIRECTIONS:
-            if self._is_feasible_coordinate(coord.x + x_offset, coord.y + y_offset):
+            if _is_feasible_coordinate(coord.x + x_offset, coord.y + y_offset, self.height, self.width):
                 neighbours.append(HexCoordinate(coord.x + x_offset, coord.y + y_offset))
 
         return neighbours
 
     def is_feasible_coordinate(self, coord: HexCoordinate) -> bool:
-        return self._is_feasible_coordinate(coord.x, coord.y)
-
-    def _is_feasible_coordinate(self, x: int, y: int) -> bool:
-        if y < 0 or y >= self.height:
-            return False
-
-        if x % 2 == 0 and y % 2 == 0:
-            if 0 <= x <= (self.width - 1)*2:
-                return True
-            else:
-                return False
-        elif x % 2 != 0 and x % 2 != 0:
-            if 1 <= x <= (self.width - 1) * 2 + 1:
-                return True
-            else:
-                return False
-        else:
-            return False
+        return _is_feasible_coordinate(coord.x, coord.y, self.height, self.width)
 
     @property
     def number_of_nodes(self) -> int:
@@ -475,6 +418,14 @@ class PathPlanner:
         return occupied_hexes
 
     def _list_of_occupied_by_obstacles_hexes(self, time: int, additional_radius: int) -> Set[HexCoordinate]:
+        return self._list_of_occupied_by_obstacles_hexes_native(time, additional_radius)
+        # return self._list_of_occupied_by_obstacles_hexes_cython(time, additional_radius)
+
+    def _list_of_occupied_by_obstacles_hexes_cython(self, time: int, additional_radius: int) -> Set[HexCoordinate]:
+        occupied_hexes = _list_of_occupied_by_obstacles_hexes(time, additional_radius, self.obstacles, self.map)
+        return occupied_hexes
+
+    def _list_of_occupied_by_obstacles_hexes_native(self, time: int, additional_radius: int) -> Set[HexCoordinate]:
         occupied_hexes = set()
 
         for obstacle in self.obstacles:
@@ -708,7 +659,7 @@ class CityMap:
 
 
 def run_ny_map():
-    requests_fname = 'ny_1_requests_1'
+    requests_fname = 'ny_1_requests_2'
     heights_fname = 'ny_1_heights'
     map_details_fname = 'ny_1_details'
 
