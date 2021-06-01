@@ -418,7 +418,7 @@ class PathSmoothingTest(TestCase):
             (1, HexCoordinate(1, 1)),
             (2, HexCoordinate(3, 1)),
             (3, HexCoordinate(4, 2)),
-        ], 1, 0)
+        ], 1, 0, 1)
 
         smoothed = self._get_points(flightplan.smoothed())
 
@@ -433,7 +433,7 @@ class PathSmoothingTest(TestCase):
             (2, HexCoordinate(3, 1)),
             (3, HexCoordinate(4, 2)),
             (4, HexCoordinate(2, 2)),
-        ], 1, 0)
+        ], 1, 0, 1)
 
         smoothed = self._get_points(flightplan.smoothed())
         self.assertEqual(len(smoothed), 4)
@@ -452,7 +452,7 @@ class PathSmoothingTest(TestCase):
             (1, HexCoordinate(1, 1)),
             (2, HexCoordinate(3, 1)),
             (3, HexCoordinate(4, 2)),
-        ], 1, 0)
+        ], 1, 0, 1)
 
         smoothed = self._get_points(flightplan.smoothed())
         self.assertEqual(len(smoothed), 4)
@@ -471,7 +471,7 @@ class PathSmoothingTest(TestCase):
             (3, HexCoordinate(4, 2)),
             (4, HexCoordinate(2, 2)),
             (5, HexCoordinate(3, 3)),
-        ], 1, 0)
+        ], 1, 0, 1)
 
         smoothed = self._get_points(flightplan.smoothed())
         self.assertEqual(len(smoothed), 4)
@@ -522,6 +522,7 @@ class DeviationPenaltyTestCase(TestCase):
         flightplans = planner.resolve_all()
 
         self.assertEqual(6, len(line))
+        print(flightplans[0].points)
         self.assertEqual(7, len(flightplans[0].points))
 
         self.assertEqual([
@@ -699,7 +700,7 @@ class TimeUncertaintyTestCase(TestCase):
                                (2, HexCoordinate(0, 0)),
                                (3, HexCoordinate(0, 0)),
                                (4, HexCoordinate(0, 0)),
-        ], radius_hex=1, time_uncertainty=3)
+        ], radius_hex=1, time_uncertainty=3, speed_hex=1)
 
         self.assertTrue(f.is_present_at_time_with_uncertainty(0, 0))
         self.assertTrue(f.is_present_at_time_with_uncertainty(1, 0))
@@ -717,7 +718,7 @@ class TimeUncertaintyTestCase(TestCase):
                                (2, HexCoordinate(0, 0)),
                                (3, HexCoordinate(0, 0)),
                                (4, HexCoordinate(0, 0)),
-        ], radius_hex=1, time_uncertainty=0)
+        ], radius_hex=1, time_uncertainty=0, speed_hex=1)
 
         self.assertTrue(f.is_present_at_time_with_uncertainty(0, 0))
         self.assertTrue(f.is_present_at_time_with_uncertainty(1, 0))
@@ -735,7 +736,7 @@ class TimeUncertaintyTestCase(TestCase):
                                (2, HexCoordinate(0, 0)),
                                (3, HexCoordinate(0, 0)),
                                (4, HexCoordinate(0, 0)),
-                               ], radius_hex=1, time_uncertainty=3)
+                               ], radius_hex=1, time_uncertainty=3, speed_hex=1)
 
         self.assertFalse(f.is_present_at_time_with_uncertainty(-3, 2))
         self.assertTrue(f.is_present_at_time_with_uncertainty(-2, 2))
@@ -967,3 +968,92 @@ class TimeUncertaintyTestCase(TestCase):
                               punish_deviation=True)
 
         self.assertRaises(PathNotFoundException, planner.resolve_all)
+
+
+class DifferentSpeedTestCase(TestCase):
+    def _get_flightplan_points(self, flightplan):
+        return [x for (t, x) in sorted(flightplan.points.items(), key=lambda x : x[0])]
+
+    def test_single_slower_drone(self):
+        requests_data = [
+            {'from': [20, 0], 'to': [0, 0], 'start_time': 0, 'radius': 1, 'time_uncertainty': 0, 'speed_hex': 0.5},
+        ]
+
+        planner = PathPlanner(obstacles=[],
+                              requests=[Request.from_dict(x) for x in requests_data],
+                              map_width=30, map_height=30, hex_radius_m=1, default_drone_radius_m=1,
+                              gdp=GDP(0, 1),
+                              punish_deviation=True)
+
+        flightplans = planner.resolve_all()
+
+        self.assertEqual(11, len(flightplans[0].points))
+
+        self.assertEqual(self._get_flightplan_points(flightplans[0]), [
+            HexCoordinate(x=20, y=0),
+            HexCoordinate(x=18, y=0),
+            HexCoordinate(x=16, y=0),
+            HexCoordinate(x=14, y=0),
+            HexCoordinate(x=12, y=0),
+            HexCoordinate(x=10, y=0),
+            HexCoordinate(x=8, y=0),
+            HexCoordinate(x=6, y=0),
+            HexCoordinate(x=4, y=0),
+            HexCoordinate(x=2, y=0),
+            HexCoordinate(x=0, y=0),
+        ])
+
+        self.assertEqual(flightplans[0].points[0], HexCoordinate(x=20, y=0))
+        self.assertEqual(flightplans[0].points[2], HexCoordinate(x=18, y=0))
+        self.assertEqual(flightplans[0].points[20], HexCoordinate(x=0, y=0))
+
+        self.assertEqual(len(planner.list_of_occupied_hexes(0)), 1)
+        self.assertEqual(len(planner.list_of_occupied_hexes(1)), 2)
+        self.assertEqual(len(planner.list_of_occupied_hexes(2)), 1)
+        self.assertEqual(len(planner.list_of_occupied_hexes(3)), 2)
+
+
+        data = planner.get_data_as_dict()
+
+        with open('./results/test_results.json', 'w') as wf:
+            simplejson.dump(data, wf)
+
+
+    def test_slow_drone_occupies_two_hexes_simultaneously(self):
+        requests_data = [
+            {'from': [4, 6], 'to': [4, 0], 'start_time': 0, 'radius': 1, 'time_uncertainty': 0, 'speed_hex': 0.01},
+            {'from': [0, 6], 'to': [6, 6], 'start_time': 0, 'radius': 1, 'time_uncertainty': 0, 'speed_hex': 1},
+        ]
+
+        planner = PathPlanner(obstacles=[],
+                              requests=[Request.from_dict(x) for x in requests_data],
+                              map_width=30, map_height=30, hex_radius_m=1, default_drone_radius_m=1,
+                              gdp=GDP(0, 1),
+                              punish_deviation=True)
+
+        flightplans = planner.resolve_all()
+
+        self.assertEqual(7, len(flightplans[0].points))
+
+        self.assertEqual(self._get_flightplan_points(flightplans[0]), [
+            HexCoordinate(x=4, y=6),
+            HexCoordinate(x=3, y=5),
+            HexCoordinate(x=4, y=4),
+            HexCoordinate(x=3, y=3),
+            HexCoordinate(x=4, y=2),
+            HexCoordinate(x=3, y=1),
+            HexCoordinate(x=4, y=0),
+        ])
+
+        self.assertEqual(self._get_flightplan_points(flightplans[1]), [
+            HexCoordinate(x=0, y=6),
+            HexCoordinate(x=2, y=6),
+            HexCoordinate(x=3, y=7),
+            HexCoordinate(x=5, y=7),
+            HexCoordinate(x=6, y=6),
+        ])
+
+        data = planner.get_data_as_dict()
+
+        with open('./results/test_results.json', 'w') as wf:
+            simplejson.dump(data, wf)

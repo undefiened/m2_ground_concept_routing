@@ -28,8 +28,9 @@ class Request:
     start_time: int
     drone_radius_m: Optional[float]
     time_uncertainty: int
+    speed_hex: float
 
-    def __init__(self, start: Union[Tuple[int, int], "HexCoordinate"], end: Union[Tuple[int, int], "HexCoordinate"], start_time: int, drone_radius_m = None, time_uncertainty=None):
+    def __init__(self, start: Union[Tuple[int, int], "HexCoordinate"], end: Union[Tuple[int, int], "HexCoordinate"], start_time: int, drone_radius_m = None, time_uncertainty=None, speed_hex=1):
         if isinstance(start, HexCoordinate):
             self.start_point = start
         else:
@@ -49,6 +50,11 @@ class Request:
 
         self.time_uncertainty = time_uncertainty
 
+        if speed_hex > 1:
+            raise NotImplementedError('Speed higher than 1 hex per unit of time is not yet supported!')
+
+        self.speed_hex = speed_hex
+
     def is_radius_defined(self) -> bool:
         return self.drone_radius_m is not None
 
@@ -64,6 +70,9 @@ class Request:
         if 'time_uncertainty' in dict:
             kwargs['time_uncertainty'] = dict['time_uncertainty']
 
+        if 'speed_hex' in dict:
+            kwargs['speed_hex'] = dict['speed_hex']
+
         return Request(dict['from'], dict['to'], dict['start_time'], **kwargs)
 
 
@@ -76,7 +85,7 @@ class GDP:
 class Flightplan:
     ONE_TICK_TO_LAND = False
 
-    def __init__(self, points: List[Tuple[int, "HexCoordinate"]], radius_hex, time_uncertainty):
+    def __init__(self, points: List[Tuple[int, "HexCoordinate"]], radius_hex, time_uncertainty, speed_hex):
         self.start_time = min([x[0] for x in points])
         self._end_time = max([x[0] for x in points])
 
@@ -84,6 +93,8 @@ class Flightplan:
         self._fill_points(points)
         self.radius_hex = radius_hex
         self.time_uncertainty = time_uncertainty
+        self.speed_hex = speed_hex
+        self.time_to_pass_hex = math.ceil(1/self.speed_hex)
 
     def _fill_points(self, points: List[Tuple[int, "HexCoordinate"]]):
         for (time, point) in points:
@@ -106,14 +117,28 @@ class Flightplan:
     def is_present_at_time_with_uncertainty(self, time: int, additional_uncertainty: int) -> bool:
         return time >= self.start_time - additional_uncertainty and time <= self.end_time + self.time_uncertainty
 
-    def position_at_time(self, time: int) -> "HexCoordinate":
+    def position_at_time(self, time: int) -> List["HexCoordinate"]:
         if not self.is_present_at_time(time):
             raise Exception('Not present at time {}'.format(time))
 
-        if self.ONE_TICK_TO_LAND and time not in self.points:
-            return self.points[time-1]
+        if self.speed_hex == 1:
+            if self.ONE_TICK_TO_LAND and time not in self.points:
+                return [self.points[time-1], ]
 
-        return self.points[time]
+            return [self.points[time], ]
+        else:
+            if time in self.points:
+                return [self.points[time], ]
+            else:
+                keys = sorted(self.points.keys())
+
+                for i in range(len(keys)-1):
+                    key_1 = keys[i]
+                    key_2 = keys[i+1]
+                    if key_1 < time < key_2:
+                        return [self.points[key_1], self.points[key_2]]
+
+                raise Exception('A point in the path is missing')
 
     def smoothed(self) -> List[Tuple[int, "HexCoordinate"]]:
         smoothed_points: List[Tuple[int, "HexCoordinate"]] = []
@@ -200,6 +225,9 @@ class HexMap:
     def is_feasible_coordinate(self, coord: HexCoordinate) -> bool:
         return _is_feasible_coordinate(coord.x, coord.y, self.height, self.width)
 
+    def _is_feasible_coordinate(self, x: int, y: int) -> bool:
+        return _is_feasible_coordinate(x, y, self.height, self.width)
+
     @property
     def number_of_nodes(self) -> int:
         return self.width*self.height
@@ -262,6 +290,9 @@ class PathPlanner:
         else:
             return 0
 
+    def _request_time_to_pass_hex(self, request: Request) -> int:
+        return math.ceil(1/request.speed_hex)
+
     def _get_deviation_penalty(self, to_coord: HexCoordinate, request: Request):
         if not self.punish_deviation:
             return 0
@@ -275,9 +306,9 @@ class PathPlanner:
     def _get_all_neighbours(self, coordinate: HexCoordinate, time: int, request: Request) -> List[Tuple[int, float]]:
         viable_neighbours_ids: List[Tuple[int, float]] = []
 
-        occupied = self._list_of_occupied_hexes_for_request(time + 1, request)
+        occupied = self._list_of_occupied_hexes_for_request(time + self._request_time_to_pass_hex(request), request)
         if self.jumping_can_occur():
-            drones_movements = self.list_of_pending_drone_movements(time + 1)
+            drones_movements = self.list_of_pending_drone_movements(time + self._request_time_to_pass_hex(request))
 
         neighbours = self.map.get_neighbours(coordinate)
         neighbours_ids = [self.map.coord_to_int(x) for x in neighbours]
@@ -286,7 +317,7 @@ class PathPlanner:
             if neighbours[neigh_i] not in occupied:
                 if not (self.jumping_can_occur() and (neighbours[neigh_i], coordinate) in drones_movements):
                     viable_neighbours_ids.append(
-                        (self.time_ext_node_id(node_neighbour_id, time + 1), 1 + self._get_deviation_penalty(self.map.int_to_coord(node_neighbour_id), request))
+                        (self.time_ext_node_id(node_neighbour_id, time + self._request_time_to_pass_hex(request)), 1 + self._get_deviation_penalty(self.map.int_to_coord(node_neighbour_id), request))
                     )
 
         if coordinate not in occupied:
@@ -388,7 +419,7 @@ class PathPlanner:
         for plan in self.flightplans:
             if plan.is_present_at_time(time - 1) and plan.is_present_at_time(time):
                 pending_movements.append(
-                    (plan.position_at_time(time - 1), plan.position_at_time(time))
+                    (plan.position_at_time(time - 1)[0], plan.position_at_time(time)[0])
                 )
 
         return pending_movements
@@ -411,9 +442,10 @@ class PathPlanner:
             for time_uncertainty in range(max(-additional_time_uncertainty, time - plan.end_time), min(plan.time_uncertainty + 1, time - plan.start_time + 1)):
                 if plan.is_present_at_time(time):
                     radius = plan.radius_hex + additional_radius
-                    hexes_covered_by_flightplan = [x for x in self.map.spiral(plan.position_at_time(time - time_uncertainty), radius) if
-                                                   self.map.is_feasible_coordinate(x)]
-                    occupied_hexes.update(hexes_covered_by_flightplan)
+                    for position in plan.position_at_time(time - time_uncertainty):
+                        hexes_covered_by_flightplan = [x for x in self.map.spiral(position, radius) if
+                                                       self.map.is_feasible_coordinate(x)]
+                        occupied_hexes.update(hexes_covered_by_flightplan)
 
         return occupied_hexes
 
@@ -467,7 +499,7 @@ class PathPlanner:
         for i, node_id in enumerate(path):
             points.append((self.map.int_time(node_id), self.map.int_to_coord(node_id)))
 
-        new_flightplan = Flightplan(points=points, radius_hex=self._request_radius_hex(request), time_uncertainty=self._request_time_uncertainty(request))
+        new_flightplan = Flightplan(points=points, radius_hex=self._request_radius_hex(request), time_uncertainty=self._request_time_uncertainty(request), speed_hex=request.speed_hex)
 
         return new_flightplan
 
