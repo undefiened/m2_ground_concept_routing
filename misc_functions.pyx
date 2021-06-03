@@ -1,5 +1,6 @@
 from typing import List
 from libcpp cimport bool
+from numpy import math, mod
 
 cdef int[6][2] DIRECTIONS = [
     [2, 0],
@@ -25,7 +26,23 @@ cdef class HexCoordinate:
         cdef int x = (self.x - self.y) / 2
         cdef int z = self.y
         cdef int y = -x - z
-        return (x, y, z)
+        return x, y, z
+
+    cpdef (double, double) get_euclidean_position(self, double radius=1):
+        cdef double height = 2 * radius
+        cdef double width = math.sqrt(3) * radius
+        cdef double pos_x, pos_y
+
+        if mod(self.x, 2) == 0 and mod(self.y, 2) == 0:
+            pos_x = (self.x / 2 + 0.5) * width
+            pos_y = 0.75 * self.y * height
+        elif mod(self.x, 2) != 0 and mod(self.y, 2) != 0 :
+            pos_x = ((self.x - 1) / 2 + 1) * width
+            pos_y = 0.75 * self.y * height
+        else:
+            raise Exception('The hex coordinate is wrong!')
+
+        return pos_x, pos_y
 
     @staticmethod
     def from_cube((int, int, int) cube) -> "HexCoordinate":

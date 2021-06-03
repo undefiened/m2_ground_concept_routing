@@ -1057,3 +1057,73 @@ class DifferentSpeedTestCase(TestCase):
 
         with open('./results/test_results.json', 'w') as wf:
             simplejson.dump(data, wf)
+
+
+class DouglasPeckerSmoothingTestCase(TestCase):
+    def test_simple_smoothing(self):
+        requests_data = [
+            {'from': [6, 6], 'to': [0, 0], 'start_time': 0, 'radius': 1},
+        ]
+
+        planner = PathPlanner(obstacles=[],
+                              requests=[Request.from_dict(x) for x in requests_data],
+                              map_width=30, map_height=30, hex_radius_m=1, default_drone_radius_m=1,
+                              gdp=GDP(0, 1),
+                              punish_deviation=True)
+
+        flightplans = planner.resolve_all()
+
+        smoothed_points = flightplans[0].smoothed(1)
+
+        self.assertEqual(len(smoothed_points), 2)
+
+        data = planner.get_data_as_dict()
+
+        with open('./results/test_results.json', 'w') as wf:
+            simplejson.dump(data, wf)
+
+    def test_two_point_smoothing(self):
+        points = [
+            (0, HexCoordinate(0, 0)),
+            (1, HexCoordinate(2, 0)),
+            (2, HexCoordinate(4, 0)),
+            (3, HexCoordinate(6, 0)),
+            (4, HexCoordinate(8, 0)),
+            (5, HexCoordinate(9, 1)),
+            (6, HexCoordinate(8, 2)),
+            (7, HexCoordinate(9, 3)),
+            (8, HexCoordinate(8, 4)),
+            (9, HexCoordinate(9, 5)),
+        ]
+        fp = Flightplan(points=points, radius_hex=1, time_uncertainty=0, speed_hex=1)
+        smoothed_points = fp.smoothed()
+
+        self.assertEqual(len(smoothed_points), 3)
+
+    def test_obstacle_avoidance_smoothing(self):
+        requests_data = [
+            {'from': [0, 0], 'to': [0, 2], 'start_time': 0, 'radius': 1},
+        ]
+
+        planner = PathPlanner(obstacles=[
+                                HexCoordinate(1, 1),
+                                HexCoordinate(2, 2),
+                                HexCoordinate(3, 3),
+                                HexCoordinate(4, 4),
+                                HexCoordinate(5, 5),
+                                         ],
+                              requests=[Request.from_dict(x) for x in requests_data],
+                              map_width=8, map_height=8, hex_radius_m=1, default_drone_radius_m=1,
+                              gdp=GDP(0, 1),
+                              punish_deviation=True)
+
+        flightplans = planner.resolve_all()
+
+        smoothed_points = flightplans[0].smoothed(1)
+
+        self.assertEqual(len(smoothed_points), 5)
+
+        data = planner.get_data_as_dict()
+
+        with open('./results/test_results.json', 'w') as wf:
+            simplejson.dump(data, wf)

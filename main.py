@@ -140,10 +140,58 @@ class Flightplan:
 
                 raise Exception('A point in the path is missing')
 
-    def smoothed(self) -> List[Tuple[int, "HexCoordinate"]]:
+    def sorted_points(self) -> List[Tuple[int, "HexCoordinate"]]:
+        return sorted(self.points.items(), key=lambda x: x[0])
+
+    def smoothed(self, epsilon=1) -> List[Tuple[int, "HexCoordinate"]]:
+        smoothed1 = self._basic_smoothing()
+        smoothed2 = self._rdp_smoothing(epsilon=epsilon)
+
+        if len(smoothed1) < len(smoothed2):
+            return smoothed1
+        elif len(smoothed2) < len(smoothed1):
+            return smoothed2
+
+        return smoothed2
+
+    @staticmethod
+    def _distance_to_line(external_point, line_point_1, line_point_2) -> float:
+        x0, y0 = external_point[1].get_euclidean_position()
+        x1, y1 = line_point_1[1].get_euclidean_position()
+        x2, y2 = line_point_2[1].get_euclidean_position()
+
+        return abs((x2 - x1)*(y1 - y0) - (x1 - x0)*(y2 - y1))/math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+
+    @classmethod
+    def _douglas_peucker(cls, points: List[Tuple[int, "HexCoordinate"]], epsilon: float) -> List[Tuple[int, HexCoordinate]]:
+        dmax = 0
+        index = 0
+
+        for i in range(1, len(points) - 1):
+            d = cls._distance_to_line(points[i], points[0], points[-1])
+            if d > dmax:
+                index = i
+                dmax = d
+
+        if dmax > epsilon:
+            rec_results_1 = cls._douglas_peucker(points[:index], epsilon)
+            rec_results_2 = cls._douglas_peucker(points[index:], epsilon)
+            rec_results_1.pop()
+            rec_results_1.extend(rec_results_2)
+
+            return rec_results_1
+        else:
+            return [points[0], points[-1]]
+
+    def _rdp_smoothing(self, epsilon: float) -> List[Tuple[int, HexCoordinate]]:
+        # Ramer–Douglas–Peucker smoothing, see https://en.wikipedia.org/wiki/Ramer%E2%80%93Douglas%E2%80%93Peucker_algorithm
+        orig_points = self.sorted_points()
+        return self._douglas_peucker(orig_points, epsilon)
+
+    def _basic_smoothing(self) -> List[Tuple[int, "HexCoordinate"]]:
         smoothed_points: List[Tuple[int, "HexCoordinate"]] = []
 
-        orig_points = [(t, x) for (t, x) in sorted(self.points.items(), key=lambda x : x[0])]
+        orig_points = self.sorted_points()
 
         i = 0
         smoothed_points.append(orig_points[0])
@@ -512,7 +560,8 @@ class PathPlanner:
             'drones_radius': self.default_drone_radius_hex,
             'flightplans': [],
             'occupied_hexes': {},
-            'obstacles': [(x.x, x.y) for x in self.obstacles]
+            'obstacles': [(x.x, x.y) for x in self.obstacles],
+            'smoothed_flightplans': [],
         }
 
         min_time = math.inf
@@ -522,6 +571,7 @@ class PathPlanner:
             flightplan_points = [(time, point.x, point.y) for (time, point) in flightplan.points.items()]
 
             data['flightplans'].append(flightplan_points)
+            data['smoothed_flightplans'].append([(time, point.x, point.y) for (time, point) in flightplan.smoothed()])
 
             flightplan_min_time = min([x[0] for x in flightplan_points])
             flightplan_max_time = max([x[0] for x in flightplan_points])
