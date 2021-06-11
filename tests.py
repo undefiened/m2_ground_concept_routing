@@ -6,6 +6,7 @@ import simplejson
 import numpy as np
 
 from main import HexMap, HexCoordinate, PathPlanner, Request, GDP, CityMap, HexHelper, Flightplan, PathNotFoundException
+from misc_functions import _is_feasible_coordinate
 
 
 class HexCoordinateTestCase(TestCase):
@@ -83,6 +84,12 @@ class HexMapTestCase(TestCase):
         self.assertFalse(hexmap._is_feasible_coordinate(y=-1, x=1))
         self.assertFalse(hexmap._is_feasible_coordinate(y=1, x=0))
 
+    def test_is_feasible_2(self):
+        height = 61
+        width = 53
+        self.assertFalse(_is_feasible_coordinate(15, 4, height, width))
+
+
     def test_find_neighbours(self):
         hexmap = HexMap(width=7, height=7)
 
@@ -134,8 +141,8 @@ class FlightsTestCase(TestCase):
             {'from': [0, 0], 'to': [4, 0], 'start_time': 0},
             {'from': [4, 0], 'to': [0, 0], 'start_time': 0},
         ]
-        planner = PathPlanner(obstacles=[], requests=[Request.from_dict(x) for x in requests_data], map_width=width, map_height=height, hex_radius_m=1, default_drone_radius_m=1, gdp=GDP(1000, 1))
-        flightplans = planner.resolve_all()
+        planner = PathPlanner(obstacles=[], map_width=width, map_height=height, hex_radius_m=1, default_drone_radius_m=1, gdp=GDP(1000, 1))
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         data = planner.get_data_as_dict()
 
@@ -156,12 +163,11 @@ class FlightsTestCase(TestCase):
             {'from': [0, 0], 'to': [4, 0], 'start_time': 3},
         ]
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=width, map_height=height,
                               default_drone_radius_m=1, hex_radius_m=1,
                               gdp=GDP(max_time=300, penalty=1))
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         self.assertEqual(3, len(flightplans[0].points))
         self.assertEqual(3, len(flightplans[1].points))
@@ -183,10 +189,9 @@ class ResolutionTestCase(TestCase):
             {'from': [0, 0], 'to': [6, 0], 'start_time': 0},
         ]
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=width, map_height=height, hex_radius_m=1, default_drone_radius_m=1, gdp=GDP(10, 1))
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         data = planner.get_data_as_dict()
 
@@ -203,10 +208,9 @@ class ResolutionTestCase(TestCase):
             {'from': [0, 0], 'to': [6, 0], 'start_time': 3},
         ]
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=width, map_height=height, hex_radius_m=1, default_drone_radius_m=1, gdp=GDP(10, 1))
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         data = planner.get_data_as_dict()
 
@@ -223,10 +227,9 @@ class ResolutionTestCase(TestCase):
             {'from': [0, 0], 'to': [6, 0], 'start_time': 0},
         ]
         planner = PathPlanner(obstacles=[HexCoordinate(4, 0), ],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=width, map_height=height, hex_radius_m=1, default_drone_radius_m=1, gdp=GDP(1000, 1))
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         data = planner.get_data_as_dict()
 
@@ -244,10 +247,9 @@ class ResolutionTestCase(TestCase):
             {'from': [6, 0], 'to': [0, 0], 'start_time': 0},
         ]
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=width, map_height=height, hex_radius_m=1, default_drone_radius_m=1, gdp=GDP(1000, 1))
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         data = planner.get_data_as_dict()
 
@@ -266,10 +268,9 @@ class ResolutionTestCase(TestCase):
             {'from': [6, 0], 'to': [0, 0], 'start_time': 0},
         ]
         planner = PathPlanner(obstacles=[HexCoordinate(4, 0)],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=width, map_height=height, hex_radius_m=1, default_drone_radius_m=1, gdp=GDP(1000, 1))
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         data = planner.get_data_as_dict()
 
@@ -289,15 +290,15 @@ class FlightPlannerTestCase(TestCase):
             {'from': [0, 0], 'to': [6, 0], 'start_time': 3},
         ]
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
+                              # requests=[Request.from_dict(x) for x in requests_data],
                               map_width=width, map_height=height, hex_radius_m=1, default_drone_radius_m=1, gdp=GDP(10, 1))
 
         neighbours = planner._get_all_neighbours(HexCoordinate(0, 0), 5, Request((0, 0), (6, 0), 3))
 
         self.assertEqual(3, len(neighbours))
-        self.assertEqual(6, planner.map.int_time(neighbours[0][0]))
-        self.assertEqual(6, planner.map.int_time(neighbours[1][0]))
-        self.assertEqual(6, planner.map.int_time(neighbours[2][0]))
+        self.assertEqual(6, planner._map.int_time(neighbours[0][0]))
+        self.assertEqual(6, planner._map.int_time(neighbours[1][0]))
+        self.assertEqual(6, planner._map.int_time(neighbours[2][0]))
 
 class CityMapTestCase(TestCase):
     def test_map_size(self):
@@ -474,11 +475,10 @@ class PathSmoothingTest(TestCase):
         ], 1, 0, 1)
 
         smoothed = self._get_points(flightplan.smoothed())
-        self.assertEqual(len(smoothed), 4)
+        self.assertEqual(len(smoothed), 3)
         self.assertEqual(smoothed, [
             HexCoordinate(0, 0),
-            HexCoordinate(4, 2),
-            HexCoordinate(2, 2),
+            HexCoordinate(3, 1),
             HexCoordinate(3, 3),
         ])
 
@@ -497,10 +497,9 @@ class DeviationPenaltyTestCase(TestCase):
             {'from': [0, 0], 'to': [6, 4], 'start_time': 0},
         ]
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=width, map_height=height, hex_radius_m=1, default_drone_radius_m=1, gdp=GDP(1000, 1),
                               punish_deviation=True)
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         self.assertEqual(6, len(line))
         self.assertEqual(6, len(flightplans[0].points))
@@ -516,10 +515,9 @@ class DeviationPenaltyTestCase(TestCase):
             {'from': [0, 2], 'to': [10, 2], 'start_time': 0},
         ]
         planner = PathPlanner(obstacles=[HexCoordinate(2, 2), ],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=width, map_height=height, hex_radius_m=1, default_drone_radius_m=1, gdp=GDP(1000, 1),
                               punish_deviation=True)
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         self.assertEqual(6, len(line))
         print(flightplans[0].points)
@@ -546,12 +544,11 @@ class DifferentRadiiTestCase(TestCase):
             {'from': [0, 0], 'to': [10, 0], 'start_time': 0, 'radius': 1},
         ]
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=20, map_height=20, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(100, 1),
                               punish_deviation=True)
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         self.assertEqual(6, len(flightplans[0].points))
         self.assertEqual(8, len(flightplans[1].points))
@@ -562,12 +559,11 @@ class DifferentRadiiTestCase(TestCase):
             {'from': [0, 0], 'to': [10, 0], 'start_time': 0, 'radius': 1},
         ]
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=20, map_height=20, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(100, 1),
                               punish_deviation=True)
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         self.assertEqual(6, len(flightplans[0].points))
         self.assertEqual(9, len(flightplans[1].points))
@@ -577,12 +573,11 @@ class DifferentRadiiTestCase(TestCase):
             {'from': [0, 0], 'to': [10, 0], 'start_time': 0, 'radius': 2},
         ]
         planner = PathPlanner(obstacles=[HexCoordinate(4, 0)],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=20, map_height=20, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(100, 1),
                               punish_deviation=True)
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         self.assertEqual(8, len(flightplans[0].points))
         self.assertEqual([
@@ -612,12 +607,11 @@ class NoViablePathDetectionTestCase(TestCase):
             HexCoordinate(3, 5),
         ]
         planner = PathPlanner(obstacles=obstacles,
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=5, map_height=5, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(100, 1),
                               punish_deviation=True)
 
-        self.assertRaises(PathNotFoundException, planner.resolve_all)
+        self.assertRaises(PathNotFoundException, planner.resolve_requests, [Request.from_dict(x) for x in requests_data])
 
     @pytest.mark.timeout(5)
     def test_radius(self):
@@ -632,12 +626,11 @@ class NoViablePathDetectionTestCase(TestCase):
             HexCoordinate(3, 5),
         ]
         planner = PathPlanner(obstacles=obstacles,
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=5, map_height=5, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(100, 1),
                               punish_deviation=True)
 
-        self.assertRaises(PathNotFoundException, planner.resolve_all)
+        self.assertRaises(PathNotFoundException, planner.resolve_requests, [Request.from_dict(x) for x in requests_data])
 
     def test_surrounded(self):
         requests_data = [
@@ -650,12 +643,11 @@ class NoViablePathDetectionTestCase(TestCase):
             HexCoordinate(10, 0),
         ]
         planner = PathPlanner(obstacles=obstacles,
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=10, map_height=10, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(100, 1),
                               punish_deviation=True)
 
-        self.assertRaises(PathNotFoundException, planner.resolve_all)
+        self.assertRaises(PathNotFoundException, planner.resolve_requests, [Request.from_dict(x) for x in requests_data])
 
     def test_surrounded_from_all_sides(self):
         requests_data = [
@@ -670,12 +662,11 @@ class NoViablePathDetectionTestCase(TestCase):
             HexCoordinate(5, 3),
         ]
         planner = PathPlanner(obstacles=obstacles,
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=10, map_height=10, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(100, 1),
                               punish_deviation=True)
 
-        self.assertRaises(PathNotFoundException, planner.resolve_all)
+        self.assertRaises(PathNotFoundException, planner.resolve_requests, [Request.from_dict(x) for x in requests_data])
 
     def test_destination_blocked(self):
         requests_data = [
@@ -685,12 +676,11 @@ class NoViablePathDetectionTestCase(TestCase):
             HexCoordinate(7, 3),
         ]
         planner = PathPlanner(obstacles=obstacles,
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=10, map_height=10, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(100, 1),
                               punish_deviation=True)
 
-        self.assertRaises(PathNotFoundException, planner.resolve_all)
+        self.assertRaises(PathNotFoundException, planner.resolve_requests, [Request.from_dict(x) for x in requests_data])
 
 
 class TimeUncertaintyTestCase(TestCase):
@@ -760,12 +750,11 @@ class TimeUncertaintyTestCase(TestCase):
             {'from': [0, 0], 'to': [10, 0], 'start_time': 0, 'radius': 1, 'time_uncertainty': 0},
         ]
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=20, map_height=20, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(100, 1),
                               punish_deviation=True)
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         self.assertEqual(6, len(flightplans[0].points))
         self.assertEqual(7, len(flightplans[1].points))
@@ -795,12 +784,11 @@ class TimeUncertaintyTestCase(TestCase):
             {'from': [0, 0], 'to': [10, 0], 'start_time': 0, 'radius': 1, 'time_uncertainty': 2},
         ]
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=20, map_height=20, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(100, 1),
                               punish_deviation=True)
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         self.assertEqual(6, len(flightplans[0].points))
         self.assertEqual(7, len(flightplans[1].points))
@@ -830,12 +818,11 @@ class TimeUncertaintyTestCase(TestCase):
             {'from': [0, 0], 'to': [10, 0], 'start_time': 0, 'radius': 1, 'time_uncertainty': 2},
         ]
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=10, map_height=10, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(0, 1),
                               punish_deviation=True)
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         self.assertEqual(6, len(flightplans[0].points))
         self.assertEqual(7, len(flightplans[1].points))
@@ -870,12 +857,11 @@ class TimeUncertaintyTestCase(TestCase):
             {'from': [0, 0], 'to': [10, 0], 'start_time': 0, 'radius': 1, 'time_uncertainty': 4},
         ]
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=10, map_height=10, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(0, 1),
                               punish_deviation=True)
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         self.assertEqual(6, len(flightplans[0].points))
         self.assertEqual(7, len(flightplans[1].points))
@@ -910,12 +896,11 @@ class TimeUncertaintyTestCase(TestCase):
             {'from': [0, 0], 'to': [20, 0], 'start_time': 0, 'radius': 2, 'time_uncertainty': 2},
         ]
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=30, map_height=30, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(0, 1),
                               punish_deviation=True)
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         self.assertEqual(11, len(flightplans[0].points))
         self.assertEqual(14, len(flightplans[1].points))
@@ -962,12 +947,11 @@ class TimeUncertaintyTestCase(TestCase):
             {'from': [0, 0], 'to': [10, 0], 'start_time': 0, 'radius': 2, 'time_uncertainty': 2},
         ]
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=30, map_height=30, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(0, 1),
                               punish_deviation=True)
 
-        self.assertRaises(PathNotFoundException, planner.resolve_all)
+        self.assertRaises(PathNotFoundException, planner.resolve_requests, [Request.from_dict(x) for x in requests_data])
 
 
 class DifferentSpeedTestCase(TestCase):
@@ -980,12 +964,11 @@ class DifferentSpeedTestCase(TestCase):
         ]
 
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=30, map_height=30, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(0, 1),
                               punish_deviation=True)
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         self.assertEqual(11, len(flightplans[0].points))
 
@@ -1026,12 +1009,11 @@ class DifferentSpeedTestCase(TestCase):
         ]
 
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=30, map_height=30, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(0, 1),
                               punish_deviation=True)
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         self.assertEqual(7, len(flightplans[0].points))
 
@@ -1066,12 +1048,11 @@ class DouglasPeckerSmoothingTestCase(TestCase):
         ]
 
         planner = PathPlanner(obstacles=[],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=30, map_height=30, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(0, 1),
                               punish_deviation=True)
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         smoothed_points = flightplans[0].smoothed(1)
 
@@ -1112,12 +1093,11 @@ class DouglasPeckerSmoothingTestCase(TestCase):
                                 HexCoordinate(4, 4),
                                 HexCoordinate(5, 5),
                                          ],
-                              requests=[Request.from_dict(x) for x in requests_data],
                               map_width=8, map_height=8, hex_radius_m=1, default_drone_radius_m=1,
                               gdp=GDP(0, 1),
                               punish_deviation=True)
 
-        flightplans = planner.resolve_all()
+        flightplans = planner.resolve_requests([Request.from_dict(x) for x in requests_data])
 
         smoothed_points = flightplans[0].smoothed(1)
 
@@ -1127,3 +1107,97 @@ class DouglasPeckerSmoothingTestCase(TestCase):
 
         with open('./results/test_results.json', 'w') as wf:
             simplejson.dump(data, wf)
+
+
+class CacheErasureTestCase(TestCase):
+    def test_jumping_can_occur_cache_erasure_resolve_request(self):
+        planner = PathPlanner(obstacles=[],
+            map_width=8, map_height=8, hex_radius_m=1, default_drone_radius_m=1,
+            gdp=GDP(0, 1),
+            punish_deviation=True)
+
+        self.assertFalse(planner.jumping_can_occur())
+        self.assertFalse(planner.jumping_can_occur())
+
+        planner.resolve_request(Request(HexCoordinate(0, 0), HexCoordinate(2, 2), 0, drone_radius_m=2))
+        self.assertFalse(planner.jumping_can_occur())
+        self.assertFalse(planner.jumping_can_occur())
+
+        planner.resolve_request(Request(HexCoordinate(0, 0), HexCoordinate(2, 2), 10, drone_radius_m=2))
+        self.assertFalse(planner.jumping_can_occur())
+        self.assertFalse(planner.jumping_can_occur())
+
+        planner.resolve_request(Request(HexCoordinate(0, 0), HexCoordinate(2, 2), 20, drone_radius_m=1))
+        self.assertFalse(planner.jumping_can_occur())
+        self.assertFalse(planner.jumping_can_occur())
+
+        planner.resolve_request(Request(HexCoordinate(0, 0), HexCoordinate(2, 2), 30, drone_radius_m=1))
+        self.assertTrue(planner.jumping_can_occur())
+        self.assertTrue(planner.jumping_can_occur())
+
+    def test_jumping_can_occur_cache_erasure_resolve_requests(self):
+        planner = PathPlanner(obstacles=[],
+            map_width=8, map_height=8, hex_radius_m=1, default_drone_radius_m=1,
+            gdp=GDP(0, 1),
+            punish_deviation=True)
+
+        requests = [
+            Request(HexCoordinate(0, 0), HexCoordinate(2, 2), 0, drone_radius_m=2),
+            Request(HexCoordinate(0, 0), HexCoordinate(2, 2), 10, drone_radius_m=1),
+            Request(HexCoordinate(0, 0), HexCoordinate(2, 2), 20, drone_radius_m=1),
+        ]
+        self.assertFalse(planner.jumping_can_occur())
+        self.assertFalse(planner.jumping_can_occur())
+
+        planner.resolve_requests(requests)
+        self.assertTrue(planner.jumping_can_occur())
+        self.assertTrue(planner.jumping_can_occur())
+
+    def test_jumping_can_occur_cache_erasure_resolve_requests_2(self):
+        planner = PathPlanner(obstacles=[],
+                              map_width=8, map_height=8, hex_radius_m=1, default_drone_radius_m=1,
+                              gdp=GDP(0, 1),
+                              punish_deviation=True)
+
+        requests = [
+            Request(HexCoordinate(0, 0), HexCoordinate(2, 2), 0, drone_radius_m=2),
+            Request(HexCoordinate(0, 0), HexCoordinate(2, 2), 10, drone_radius_m=2),
+            Request(HexCoordinate(0, 0), HexCoordinate(2, 2), 20, drone_radius_m=1),
+        ]
+        self.assertFalse(planner.jumping_can_occur())
+        self.assertFalse(planner.jumping_can_occur())
+
+        planner.resolve_requests(requests)
+        self.assertFalse(planner.jumping_can_occur())
+        self.assertFalse(planner.jumping_can_occur())
+
+    def test_two_instances(self):
+        planner = PathPlanner(obstacles=[],
+                              map_width=8, map_height=8, hex_radius_m=1, default_drone_radius_m=1,
+                              gdp=GDP(0, 1),
+                              punish_deviation=True)
+
+        requests = [
+            Request(HexCoordinate(0, 0), HexCoordinate(2, 2), 0, drone_radius_m=2),
+            Request(HexCoordinate(0, 0), HexCoordinate(2, 2), 10, drone_radius_m=1),
+            Request(HexCoordinate(0, 0), HexCoordinate(2, 2), 20, drone_radius_m=1),
+        ]
+        self.assertFalse(planner.jumping_can_occur())
+        self.assertFalse(planner.jumping_can_occur())
+
+        planner.resolve_requests(requests)
+        self.assertTrue(planner.jumping_can_occur())
+        self.assertTrue(planner.jumping_can_occur())
+
+        planner2 = PathPlanner(obstacles=[],
+                              map_width=8, map_height=8, hex_radius_m=1, default_drone_radius_m=1,
+                              gdp=GDP(0, 1),
+                              punish_deviation=True)
+
+        self.assertFalse(planner2.jumping_can_occur())
+        planner2.resolve_request(Request(HexCoordinate(0, 0), HexCoordinate(2, 2), 0, drone_radius_m=2))
+
+        self.assertTrue(planner.jumping_can_occur())
+        self.assertTrue(planner.jumping_can_occur())
+        self.assertFalse(planner2.jumping_can_occur())
+        self.assertFalse(planner2.jumping_can_occur())

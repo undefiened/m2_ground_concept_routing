@@ -12,7 +12,7 @@ from igraph import *
 import networkx as nx
 import numpy as np
 
-from misc_functions import _is_feasible_coordinate, _list_of_occupied_by_obstacles_hexes, HexCoordinate
+from misc_functions import _is_feasible_coordinate, _list_of_occupied_by_obstacles_hexes, HexCoordinate, _hex_distance
 
 DEBUG = False
 
@@ -75,6 +75,23 @@ class Request:
 
         return Request(dict['from'], dict['to'], dict['start_time'], **kwargs)
 
+    def to_dict(self) -> Dict:
+        data = {
+            'from': [self.start_point.x, self.start_point.y],
+            'to': [self.end_point.x, self.end_point.y],
+            'start_time': self.start_time,
+        }
+
+        if self.drone_radius_m is not None:
+            data['radius'] = self.drone_radius_m
+
+        if self.time_uncertainty is not None:
+            data['time_uncertainty'] = self.time_uncertainty
+
+        if self.speed_hex != 1:
+            data['speed_hex'] = self.speed_hex
+
+        return data
 
 @dataclass
 class GDP:
@@ -238,6 +255,7 @@ class HexMap:
 
         return time
 
+    @functools.lru_cache(100000)
     def int_to_coord(self, node_id: int) -> HexCoordinate:
         if node_id >= self.number_of_nodes:
             node_id = node_id - math.floor(node_id / self.number_of_nodes) * self.number_of_nodes # add tests for this
@@ -261,6 +279,7 @@ class HexMap:
         else:
             return round(coord.y * self.width + math.floor(coord.x / 2))
 
+    @functools.lru_cache(10000)
     def get_neighbours(self, coord: HexCoordinate) -> List[HexCoordinate]:
         neighbours: List[HexCoordinate] = []
 
@@ -310,18 +329,31 @@ class PathPlanner:
 
     DEVIATION_PENALTY_DISTANCE_MULTIPLIER = 0.000001
 
-    def __init__(self, obstacles: List[HexCoordinate], requests: List[Request], map_width, map_height,
+    def __init__(self, obstacles: List[HexCoordinate], map_width, map_height,
                  hex_radius_m, default_drone_radius_m, gdp, city_map=None, punish_deviation=False):
         self.flightplans: List[Flightplan] = []
-        self.obstacles = obstacles
-        self.requests: List[Request] = requests
-        self.map = HexMap(width=map_width, height=map_height)
+        self._obstacles = obstacles
+        self.requests: List[Request] = []
+        self._map = HexMap(width=map_width, height=map_height)
         self.hex_radius_m = hex_radius_m
         self.default_drone_radius_m = default_drone_radius_m
         self.default_drone_radius_hex = self._radius_m_to_hex(default_drone_radius_m)
         self.gdp = gdp
         self.punish_deviation = punish_deviation
         self.city_map = city_map
+
+    @property
+    def map(self) -> HexMap:
+        return self._map
+
+    @property
+    def obstacles(self) -> List[HexCoordinate]:
+        return self._obstacles
+
+    # @obstacles.setter
+    # def obstacles(self, obstacles: List[HexCoordinate]):
+    #     self._obstacles = obstacles
+    #     self._list_of_occupied_by_obstacles_hexes_cython.cache_clear()
 
     def _radius_m_to_hex(self, radius_m: float) -> int:
         return ceil(radius_m / self.hex_radius_m)
@@ -345,11 +377,17 @@ class PathPlanner:
         if not self.punish_deviation:
             return 0
 
-        line = HexHelper.line_drawing(request.start_point, request.end_point)
+        # line = HexHelper.line_drawing(request.start_point, request.end_point)
+        #
+        # min_dist = min([HexHelper.hex_distance(point, to_coord) for point in line])
+        #
+        # return min_dist*self.DEVIATION_PENALTY_DISTANCE_MULTIPLIER
 
-        min_dist = min([HexHelper.hex_distance(point, to_coord) for point in line])
+        x0, y0 = to_coord.get_euclidean_position()
+        x1, y1 = request.start_point.get_euclidean_position()
+        x2, y2 = request.end_point.get_euclidean_position()
 
-        return min_dist*self.DEVIATION_PENALTY_DISTANCE_MULTIPLIER
+        return (abs((x2 - x1) * (y1 - y0) - (x1 - x0) * (y2 - y1)) / math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2))*self.DEVIATION_PENALTY_DISTANCE_MULTIPLIER
 
     def _get_all_neighbours(self, coordinate: HexCoordinate, time: int, request: Request) -> List[Tuple[int, float]]:
         viable_neighbours_ids: List[Tuple[int, float]] = []
@@ -358,19 +396,19 @@ class PathPlanner:
         if self.jumping_can_occur():
             drones_movements = self.list_of_pending_drone_movements(time + self._request_time_to_pass_hex(request))
 
-        neighbours = self.map.get_neighbours(coordinate)
-        neighbours_ids = [self.map.coord_to_int(x) for x in neighbours]
+        neighbours = self._map.get_neighbours(coordinate)
+        neighbours_ids = [self._map.coord_to_int(x) for x in neighbours]
 
         for (neigh_i, node_neighbour_id) in enumerate(neighbours_ids):
             if neighbours[neigh_i] not in occupied:
                 if not (self.jumping_can_occur() and (neighbours[neigh_i], coordinate) in drones_movements):
                     viable_neighbours_ids.append(
-                        (self.time_ext_node_id(node_neighbour_id, time + self._request_time_to_pass_hex(request)), 1 + self._get_deviation_penalty(self.map.int_to_coord(node_neighbour_id), request))
+                        (self.time_ext_node_id(node_neighbour_id, time + self._request_time_to_pass_hex(request)), 1 + self._get_deviation_penalty(self._map.int_to_coord(node_neighbour_id), request))
                     )
 
         if coordinate not in occupied:
             viable_neighbours_ids.append(
-                (self.time_ext_node_id(self.map.coord_to_int(coordinate), time + 1), 1)  # hovering
+                (self.time_ext_node_id(self._map.coord_to_int(coordinate), time + 1), 1)  # hovering
             )
 
         if coordinate == request.end_point:
@@ -383,21 +421,21 @@ class PathPlanner:
     def _is_destination_reachable(self, request: Request) -> bool:
         G = nx.Graph()
 
-        G.add_nodes_from(range(self.map.number_of_nodes))
+        G.add_nodes_from(range(self._map.number_of_nodes))
 
-        start_point_id = self.map.coord_to_int(request.start_point)
-        end_point_id = self.map.coord_to_int(request.end_point)
+        start_point_id = self._map.coord_to_int(request.start_point)
+        end_point_id = self._map.coord_to_int(request.end_point)
         edges = []
 
         occupied = self._list_of_occupied_by_obstacles_hexes(0, self._request_radius_hex(request)-1)
 
-        for i in range(self.map.number_of_nodes):
-            coord = self.map.int_to_coord(i)
+        for i in range(self._map.number_of_nodes):
+            coord = self._map.int_to_coord(i)
             if coord not in occupied:
-                neighbours = self.map.get_neighbours(self.map.int_to_coord(i))
+                neighbours = self._map.get_neighbours(self._map.int_to_coord(i))
 
                 for neighbour_coord in neighbours:
-                    neighbour_id = self.map.coord_to_int(neighbour_coord)
+                    neighbour_id = self._map.coord_to_int(neighbour_coord)
                     if neighbour_coord not in occupied:
                         edges.append((i, neighbour_id))
 
@@ -416,7 +454,7 @@ class PathPlanner:
         for i in range(self.gdp.max_time+1):
             weight = i*self.gdp.penalty
             occupied = self._list_of_occupied_hexes_for_request(request.start_time + i, request)
-            coord = self.time_ext_node_id(self.map.coord_to_int(request.start_point), request.start_time + i)
+            coord = self.time_ext_node_id(self._map.coord_to_int(request.start_point), request.start_time + i)
 
             if request.start_point not in occupied:
                 self._queue.put((weight, coord))
@@ -431,8 +469,8 @@ class PathPlanner:
                     break
 
                 current_node_weight = self._nodes_weights[current_node_id]
-                current_node_coord = self.map.int_to_coord(current_node_id)
-                current_node_time = self.map.int_time(current_node_id)
+                current_node_coord = self._map.int_to_coord(current_node_id)
+                current_node_time = self._map.int_time(current_node_id)
 
                 neighbours = self._get_all_neighbours(current_node_coord, current_node_time, request)
 
@@ -459,7 +497,7 @@ class PathPlanner:
         return path
 
     def time_ext_node_id(self, node_id: int, time: int) -> int:
-        return node_id + self.map.number_of_nodes * time
+        return node_id + self._map.number_of_nodes * time
 
     def list_of_pending_drone_movements(self, time: int) -> List[Tuple[HexCoordinate, HexCoordinate]]:
         pending_movements: List[Tuple[HexCoordinate, HexCoordinate]] = []
@@ -472,6 +510,7 @@ class PathPlanner:
 
         return pending_movements
 
+    @functools.lru_cache(10)
     def jumping_can_occur(self):
         radii_hex = [self._request_radius_hex(request) for request in self.requests]
         return radii_hex.count(1) > 1
@@ -491,27 +530,28 @@ class PathPlanner:
                 if plan.is_present_at_time(time):
                     radius = plan.radius_hex + additional_radius
                     for position in plan.position_at_time(time - time_uncertainty):
-                        hexes_covered_by_flightplan = [x for x in self.map.spiral(position, radius) if
-                                                       self.map.is_feasible_coordinate(x)]
+                        hexes_covered_by_flightplan = [x for x in self._map.spiral(position, radius) if
+                                                       self._map.is_feasible_coordinate(x)]
                         occupied_hexes.update(hexes_covered_by_flightplan)
 
         return occupied_hexes
 
     def _list_of_occupied_by_obstacles_hexes(self, time: int, additional_radius: int) -> Set[HexCoordinate]:
-        return self._list_of_occupied_by_obstacles_hexes_native(time, additional_radius)
-        # return self._list_of_occupied_by_obstacles_hexes_cython(time, additional_radius)
+        # return self._list_of_occupied_by_obstacles_hexes_native(time, additional_radius)
+        return self._list_of_occupied_by_obstacles_hexes_cython(time, additional_radius)
 
+    @functools.lru_cache(maxsize=None)
     def _list_of_occupied_by_obstacles_hexes_cython(self, time: int, additional_radius: int) -> Set[HexCoordinate]:
-        occupied_hexes = _list_of_occupied_by_obstacles_hexes(time, additional_radius, self.obstacles, self.map)
+        occupied_hexes = _list_of_occupied_by_obstacles_hexes(time, additional_radius, self._obstacles, self._map)
         return occupied_hexes
 
     def _list_of_occupied_by_obstacles_hexes_native(self, time: int, additional_radius: int) -> Set[HexCoordinate]:
         occupied_hexes = set()
 
-        for obstacle in self.obstacles:
+        for obstacle in self._obstacles:
             radius = additional_radius + 1
-            hexes_covered_by_obstacle = [x for x in self.map.spiral(obstacle, radius) if
-                                         self.map.is_feasible_coordinate(x)]
+            hexes_covered_by_obstacle = [x for x in self._map.spiral(obstacle, radius) if
+                                         self._map.is_feasible_coordinate(x)]
             occupied_hexes.update(hexes_covered_by_obstacle)
 
         return occupied_hexes
@@ -525,42 +565,44 @@ class PathPlanner:
 
         return occupied_hexes
 
-    def resolve_all(self) -> List[Flightplan]:
-        for i, request in enumerate(self.requests):
-            new_flightplan = self.resolve_request(request)
-            self.flightplans.append(new_flightplan)
-            print('{} out of {}'.format(i, len(self.requests)))
+    def resolve_requests(self, requests: List[Request]) -> List[Flightplan]:
+        for i, request in enumerate(requests):
+            self.resolve_request(request)
+            print('{} out of {}'.format(i+1, len(requests)))
 
         return self.flightplans
 
     def resolve_request(self, request: Request) -> Flightplan:
+        self.requests.append(request)
+        self.jumping_can_occur.cache_clear()
         if not self._is_destination_reachable(request):
             raise PathNotFoundException("The destination is not reachable for request {}".format(request))
 
         path = self._find_shortest_path(request)
 
         points = []
-        if self.map.int_time(path[0]) != request.start_time:
-            for i in range(self.map.int_time(path[0]) - request.start_time):
-                points.append((i + request.start_time, self.map.int_to_coord(path[0])))
+        if self._map.int_time(path[0]) != request.start_time:
+            for i in range(self._map.int_time(path[0]) - request.start_time):
+                points.append((i + request.start_time, self._map.int_to_coord(path[0])))
 
         for i, node_id in enumerate(path):
-            points.append((self.map.int_time(node_id), self.map.int_to_coord(node_id)))
+            points.append((self._map.int_time(node_id), self._map.int_to_coord(node_id)))
 
         new_flightplan = Flightplan(points=points, radius_hex=self._request_radius_hex(request), time_uncertainty=self._request_time_uncertainty(request), speed_hex=request.speed_hex)
 
+        self.flightplans.append(new_flightplan)
         return new_flightplan
 
     def get_data_as_dict(self):
         data = {
             'map': {
-                'width': self.map.width,
-                'height': self.map.height
+                'width': self._map.width,
+                'height': self._map.height
             },
             'drones_radius': self.default_drone_radius_hex,
             'flightplans': [],
             'occupied_hexes': {},
-            'obstacles': [(x.x, x.y) for x in self.obstacles],
+            'obstacles': [(x.x, x.y) for x in self._obstacles],
             'smoothed_flightplans': [],
         }
 
@@ -651,6 +693,7 @@ class HexHelper:
                 cls._lerp(a[2] - 3e-6, b[2], t))
 
     @classmethod
+    @functools.lru_cache(1000)
     def line_drawing(cls, c1: HexCoordinate, c2: HexCoordinate) -> List[HexCoordinate]:
         n = cls.hex_distance(c1, c2)
 
@@ -667,9 +710,7 @@ class HexHelper:
 
     @staticmethod
     def hex_distance(point1: HexCoordinate, point2: HexCoordinate) -> int:
-        dx = abs(point1.x - point2.x)
-        dy = abs(point1.y - point2.y)
-        return round(dy + max(0, (dx - dy) / 2))
+        return _hex_distance(point1, point2)
 
 
 class CityMap:
@@ -741,7 +782,7 @@ class CityMap:
 
 
 def run_ny_map():
-    requests_fname = 'ny_1_requests_2'
+    requests_fname = 'ny_1_requests_random_2'
     heights_fname = 'ny_1_heights'
     map_details_fname = 'ny_1_details'
 
@@ -759,15 +800,21 @@ def run_ny_map():
         requests = city_map.requests_to_hex_grid(requests_data)
 
         obstacles = city_map.obstacles()
-        planner = PathPlanner(obstacles=obstacles, requests=requests, map_width=width, map_height=height,
-                              default_drone_radius_m=1, hex_radius_m=1,
-                              gdp=GDP(max_time=data['gdp']['max_time'], penalty=data['gdp']['penalty']), city_map=city_map)
-        planner.resolve_all()
+        planner = PathPlanner(obstacles=obstacles, map_width=width, map_height=height,
+                              default_drone_radius_m=2, hex_radius_m=1,
+                              gdp=GDP(max_time=data['gdp']['max_time'], penalty=data['gdp']['penalty']), city_map=city_map, punish_deviation=True)
+        planner.resolve_requests(requests)
 
         data = planner.get_data_as_dict()
 
         with open('./results/ny_results.json', 'w') as wf:
             simplejson.dump(data, wf)
+
+
+# def run_artificial():
+#     requests_fname = 'ny_1_requests_2'
+#     heights_fname = 'artificial_1_heights'
+#     map_details_fname = 'ny_1_details'
 
 
 def run_simple():
@@ -802,8 +849,8 @@ def run_simple():
         obstacles = [HexCoordinate(x=x[0], y=x[1]) for x in obstacles_data]
         planner = PathPlanner(obstacles=obstacles, requests=requests, map_width=width, map_height=height,
                               default_drone_radius_m=data['radius'], hex_radius_m=1,
-                              gdp=GDP(max_time=data['gdp']['max_time'], penalty=data['gdp']['penalty']))
-        planner.resolve_all()
+                              gdp=GDP(max_time=data['gdp']['max_time'], penalty=data['gdp']['penalty']), punish_deviation=True)
+        planner.resolve_requests()
 
         data = planner.get_data_as_dict()
 

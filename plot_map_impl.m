@@ -24,14 +24,12 @@ imshow(ny_map);
 hold on;
 axis off;
 % set(gca, 'YDir','reverse')
-
 mp.plotHexGrid(width, height);
+for obstacleInd=1:size(obstacles, 1)
+    obstacle = obstacles(obstacleInd, :);
 
-% for obstacleInd=1:size(obstacles, 1)
-%     obstacle = obstacles(obstacleInd, :);
-% 
-%     mp.fillHex(obstacle(1), obstacle(2), 'r');
-% end
+    mp.fillHex(obstacle(1), obstacle(2), 'r');
+end
 
 xlim([-1 width*2*hex_r_px]);
 ylim([-2 height*1.5*hex_r_px]);

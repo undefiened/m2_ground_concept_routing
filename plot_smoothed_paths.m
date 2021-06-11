@@ -1,6 +1,6 @@
 clear; close all;
 
-data = jsondecode(fileread("./results/test_results.json"));
+data = jsondecode(fileread("./results/ny_results.json"));
 ny_map = imread('./data/ny_1_map.png');
 
 width = data.map.width;
@@ -85,3 +85,5 @@ end
 
 xlim([-1 width*2*hex_r_px]);
 ylim([-2 height*1.5*hex_r_px]);
+
+saveas(gcf, ['./results/images/smoothed_paths.png']);

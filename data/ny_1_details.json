@@ -1,5 +1,5 @@
 {
   "pixel_size_m": 4,
-  "hex_radius_m": 64,
+  "hex_radius_m": 32,
   "flight_height": 50
 }

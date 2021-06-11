@@ -4,7 +4,7 @@ res = rmdir("./results/images/", 's');
 display(res);
 mkdir("./results/images/");
 
-data = jsondecode(fileread("./results/ny_results.json"));
+data = jsondecode(fileread("./results/test_results.json"));
 
 width = data.map.width;
 height = data.map.height;
@@ -68,7 +68,7 @@ for time=minTime:maxTime
             else
                 fillHex(point(1), point(2), 'b');
 
-                if data.drones_radius > 1
+                if data.drones_radius >= 1
                     occupiedHexes = data.occupied_hexes.(['x', num2str(time)]);
 
                     for hexId=1:size(occupiedHexes, 1)

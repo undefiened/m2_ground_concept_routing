@@ -30,6 +30,8 @@ classdef MapPlotter
         end
 
         function plotHexGrid(obj, width, height)
+            allPoints = [];
+            
             for y = 0:height-1
                 for x = 0:width-1
                     if mod(y, 2) == 0
@@ -38,9 +40,11 @@ classdef MapPlotter
                         points = obj.getHexPoints(x * 2 + 1, y);
                     end
 
-                    plot(points(:, 1), points(:, 2), 'k');
+                    allPoints = [allPoints; points; NaN NaN]; % accumulate points and plot in one pass to speed-up
+%                     plot(points(:, 1), points(:, 2), 'k');
                 end
             end
+            plot(allPoints(:, 1), allPoints(:, 2), 'k');
         end
 
         function points=getHexPoints(obj, x, y)

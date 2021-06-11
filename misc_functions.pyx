@@ -12,7 +12,8 @@ cdef int[6][2] DIRECTIONS = [
 ]
 
 cdef class HexCoordinate:
-    cdef public int x, y
+    cdef readonly int x, y
+    cdef readonly double pos_x, pos_y
 
     # By default in doublewidth coordinates (see, e.g., https://www.redblobgames.com/grids/hexagons/#coordinates-doubled)
     def __init__(self, int x, int y):
@@ -22,6 +23,18 @@ cdef class HexCoordinate:
         self.x = x
         self.y = y
 
+        cdef double height = 2
+        cdef double width = math.sqrt(3)
+
+        if mod(self.x, 2) == 0 and mod(self.y, 2) == 0:
+            self.pos_x = (self.x / 2 + 0.5) * width
+            self.pos_y = 0.75 * self.y * height
+        elif mod(self.x, 2) != 0 and mod(self.y, 2) != 0 :
+            self.pos_x = ((self.x - 1) / 2 + 1) * width
+            self.pos_y = 0.75 * self.y * height
+        else:
+            raise Exception('The hex coordinate is wrong!')
+
     cpdef (int, int, int) to_cube(self):
         cdef int x = (self.x - self.y) / 2
         cdef int z = self.y
@@ -29,20 +42,7 @@ cdef class HexCoordinate:
         return x, y, z
 
     cpdef (double, double) get_euclidean_position(self, double radius=1):
-        cdef double height = 2 * radius
-        cdef double width = math.sqrt(3) * radius
-        cdef double pos_x, pos_y
-
-        if mod(self.x, 2) == 0 and mod(self.y, 2) == 0:
-            pos_x = (self.x / 2 + 0.5) * width
-            pos_y = 0.75 * self.y * height
-        elif mod(self.x, 2) != 0 and mod(self.y, 2) != 0 :
-            pos_x = ((self.x - 1) / 2 + 1) * width
-            pos_y = 0.75 * self.y * height
-        else:
-            raise Exception('The hex coordinate is wrong!')
-
-        return pos_x, pos_y
+        return self.pos_x * radius, self.pos_y * radius
 
     @staticmethod
     def from_cube((int, int, int) cube) -> "HexCoordinate":
@@ -86,19 +86,15 @@ cpdef bint _is_feasible_coordinate(int x, int y, int height, int width):
     if y < 0 or y >= height:
         return False
 
-    if x % 2 == 0 and y % 2 == 0:
-        if 0 <= x <= (width - 1)*2:
-            return True
-        else:
-            return False
-    elif x % 2 != 0 and x % 2 != 0:
-        if 1 <= x <= (width - 1) * 2 + 1:
-            return True
-        else:
-            return False
-    else:
+    if (x % 2 == 0) != (y % 2 == 0):
         return False
+    else:
+        if x % 2 == 0:
+            return 0 <= x <= (width - 1)*2
+        else:
+            return 0 <= x <= (width - 1)*2 + 1
 
+    return False
 
 def _list_of_occupied_by_obstacles_hexes(int time, int additional_radius, obstacles, map):
     occupied_hexes = set()
@@ -130,3 +126,8 @@ def _list_of_occupied_by_obstacles_hexes(int time, int additional_radius, obstac
                     cube = HexCoordinate(cube.x + DIRECTIONS[i][0], cube.y + DIRECTIONS[i][1])
 
     return occupied_hexes
+
+cpdef int _hex_distance(HexCoordinate point1, HexCoordinate point2):
+    cdef int dx = abs(point1.x - point2.x)
+    cdef int dy = abs(point1.y - point2.y)
+    return round(dy + max(0, (dx - dy) / 2))
