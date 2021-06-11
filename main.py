@@ -521,6 +521,7 @@ class PathPlanner:
     def _list_of_occupied_hexes_for_request(self, time: int, request: Request) -> Set[HexCoordinate]:
         return self._list_of_occupied_hexes(time, self._request_radius_hex(request)-1, self._request_time_uncertainty(request))
 
+    @functools.lru_cache(1000)
     def _list_of_occupied_by_drones_hexes(self, time: int, additional_radius: int, additional_time_uncertainty: int) -> Set[HexCoordinate]:
         occupied_hexes = set()
 
@@ -572,9 +573,14 @@ class PathPlanner:
 
         return self.flightplans
 
+    def _clear_cache(self):
+        self.jumping_can_occur.cache_clear()
+        self._list_of_occupied_by_drones_hexes.cache_clear()
+
     def resolve_request(self, request: Request) -> Flightplan:
         self.requests.append(request)
-        self.jumping_can_occur.cache_clear()
+        self._clear_cache()
+
         if not self._is_destination_reachable(request):
             raise PathNotFoundException("The destination is not reachable for request {}".format(request))
 
@@ -591,6 +597,7 @@ class PathPlanner:
         new_flightplan = Flightplan(points=points, radius_hex=self._request_radius_hex(request), time_uncertainty=self._request_time_uncertainty(request), speed_hex=request.speed_hex)
 
         self.flightplans.append(new_flightplan)
+        self._clear_cache()
         return new_flightplan
 
     def get_data_as_dict(self):
@@ -803,7 +810,7 @@ def run_ny_map():
         planner = PathPlanner(obstacles=obstacles, map_width=width, map_height=height,
                               default_drone_radius_m=2, hex_radius_m=1,
                               gdp=GDP(max_time=data['gdp']['max_time'], penalty=data['gdp']['penalty']), city_map=city_map, punish_deviation=True)
-        planner.resolve_requests(requests)
+        planner.resolve_requests(requests[:3])
 
         data = planner.get_data_as_dict()
 
