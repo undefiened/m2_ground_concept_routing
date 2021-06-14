@@ -5,8 +5,8 @@ import pytest
 import simplejson
 import numpy as np
 
-from main import HexMap, HexCoordinate, PathPlanner, Request, GDP, CityMap, HexHelper, Flightplan, PathNotFoundException
-from misc_functions import _is_feasible_coordinate
+from misc_functions import _is_feasible_coordinate, HexCoordinate
+from path_planning import HexMap, Request, CityMap, HexHelper, Flightplan, GDP, PathPlanner, PathNotFoundException
 
 
 class HexCoordinateTestCase(TestCase):
