@@ -5,6 +5,6 @@ setup(
     name='routing_hex',
     version='0.1',
     author='Leo',
-    ext_modules=cythonize('misc_functions.pyx'),
+    ext_modules=cythonize('hexagonal_path_planner/misc_functions.pyx'),
     zip_safe=False
 )
