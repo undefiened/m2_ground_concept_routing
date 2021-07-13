@@ -27,6 +27,61 @@ class Request:
     gdp: GDP
 
 
+@dataclass
+class TurnParams:
+    angle_from: float
+    angle_to: float
+    speed_knot: float
+    time_cost: float
+
+    @property
+    def penalized(self):
+        return self.time_cost > 0
+
+
+class TurnParamsTable:
+    def __init__(self, turn_costs: List[TurnParams]):
+        self.turn_params_table = turn_costs
+        self.turn_params_table.sort(key=lambda x: x.angle_from)
+
+        self._check_table_consistency()
+
+    @property
+    def penalized_turn_angle(self):
+        return
+
+    def _check_table_consistency(self):
+        if self.turn_params_table[0].angle_from != 0 or self.turn_params_table[-1].angle_to != 180:
+            raise Exception('Wrong turn costs!')
+
+        for i in range(len(self.turn_params_table) - 1):
+            c1 = self.turn_params_table[i]
+            c2 = self.turn_params_table[i + 1]
+
+            if c1.angle_to != c2.angle_from:
+                raise Exception('Wrong turn costs!')
+
+    def get_turn_params(self, angle: float) -> TurnParams:
+        while angle > 180:
+            angle -= 180
+
+        while angle < 0:
+            angle += 180
+
+        for params in self.turn_params_table:
+            if params.angle_from <= angle < params.angle_to:
+                return params
+
+    def get_turn_cost_s(self, angle: float) -> float:
+        return self.get_turn_params(angle).time_cost
+
+    def get_turn_speed_knots(self, angle: float) -> float:
+        return self.get_turn_params(angle).speed_knot
+
+    def is_turn_penalized(self, angle: float) -> float:
+        return self.get_turn_params(angle).penalized
+
+
 class Flightplan:
     @dataclass
     class Waypoint:

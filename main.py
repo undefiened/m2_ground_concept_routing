@@ -1,9 +1,11 @@
+import math
+
 import numpy as np
 import simplejson
 
 # from hexagonal.misc_functions import HexCoordinate
 # from hexagonal.path_planner import CityMap, Request, PathPlanner
-from common import Request, GDP
+from common import Request, GDP, TurnParamsTable, TurnParams
 from planner import Layer, RoutePlanner
 from street_network.path_planner import StreetNetwork, PathPlanner
 
@@ -80,7 +82,14 @@ from street_network.path_planner import StreetNetwork, PathPlanner
 
 
 def run_street_network_vienn():
-    sn = StreetNetwork.from_graphml_file('../Test_Scenario/Test_Scenario/data/street_data/graph_files/processed_graphM2.graphml')
+    drone_acceleration_m_s2 = 3.5
+    turn_costs = TurnParamsTable([
+        TurnParams(0, 30, 0, 0),
+        TurnParams(30, 180, 10, math.ceil(2*(20/drone_acceleration_m_s2))),
+    ])
+
+    sn = StreetNetwork.from_graphml_file('../Test_Scenario/Test_Scenario/data/street_data/graph_files/processed_graphM2.graphml', turn_costs)
+
     fr = (16.3285369, 48.2210692)
     to = (16.3424207, 48.2172288)
 
@@ -90,7 +99,7 @@ def run_street_network_vienn():
         Layer(50, Layer.Type.NETWORK, PathPlanner(sn, 1, 15, GDP(0, 1000)))
     ]
 
-    rp = RoutePlanner(layers)
+    rp = RoutePlanner(layers, turn_costs)
     res = rp.resolve_requests([request, ])
 
     with open('new_scenario.scn', 'w') as f:

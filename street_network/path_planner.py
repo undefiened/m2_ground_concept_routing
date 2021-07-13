@@ -6,7 +6,7 @@ from typing import Tuple, List, Dict, Set, Union
 from geopy import distance
 import networkx as nx
 
-from common import PathNotFoundException, GDP, Request
+from common import PathNotFoundException, GDP, Request, TurnParamsTable
 
 
 class SNRequest:
@@ -93,7 +93,7 @@ class StreetNetwork:
 
     MERGE_THRESHOLD_MULTIPLIER = 0.1
 
-    def __init__(self, network: nx.Graph, recompute_lengths: bool=False):
+    def __init__(self, network: nx.Graph, turn_params_table: TurnParamsTable, recompute_lengths: bool = False):
         self.original_network: nx.Graph = network
         self._convert_attributes_to_numbers()
 
@@ -101,6 +101,7 @@ class StreetNetwork:
             self._recompute_edges_lengths()
 
         self._compute_normalized_positions()
+        self.turn_params_table = turn_params_table
         # self._compute_distances()
 
     def _recompute_edges_lengths(self):
@@ -140,14 +141,14 @@ class StreetNetwork:
         return self.BoundingBox(left=left, right=right, top=top, bottom=bottom)
 
     @classmethod
-    def from_graphml_file(cls, filename, recompute_lengths: bool = False):
+    def from_graphml_file(cls, filename, turn_params_table: TurnParamsTable, recompute_lengths: bool = False):
         network = nx.read_graphml(filename)
-        return cls(network, recompute_lengths=recompute_lengths)
+        return cls(network, recompute_lengths=recompute_lengths, turn_params_table=turn_params_table)
 
     @classmethod
-    def from_graphml_string(cls, graphml, recompute_lengths: bool = False):
+    def from_graphml_string(cls, graphml, turn_params_table: TurnParamsTable, recompute_lengths: bool = False):
         network = nx.parse_graphml(graphml)
-        return cls(network, recompute_lengths)
+        return cls(network, turn_params_table=turn_params_table, recompute_lengths=recompute_lengths)
 
     def get_subdivided_network(self, edge_length) -> nx.DiGraph:
         subdivided_network = nx.DiGraph()

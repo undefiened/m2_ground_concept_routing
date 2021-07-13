@@ -8,7 +8,7 @@ import numpy as np
 import pyclipper
 from networkx import NetworkXNoPath
 
-from common import GDP, Request, Flightplan
+from common import GDP, Request, Flightplan, TurnParamsTable
 from street_network.path_planner import PathPlanner as SNPathPlanner, StreetNetwork, SNRequest
 from pyclipper import *
 from mip import Model, xsum, minimize, BINARY
@@ -48,8 +48,9 @@ class RoutePlanner:
         flightplan: Flightplan
         sn_request: SNRequest
 
-    def __init__(self, layers: List[Layer]):
+    def __init__(self, layers: List[Layer], turn_params_table: TurnParamsTable):
         self.layers = sorted(layers, key=lambda x: x.altitude_m)
+        self.turn_params_table = turn_params_table
 
         # self.street_network_filename = street_network_filename
         # self.timestep_s = timestep_s
@@ -283,17 +284,39 @@ class RoutePlanner:
 
         scenario += "00:00:00>CRE D{id} M600 {lat} {lon} {hdg} {alt} {spd}\n".format(id=id, lat=source.y, lon=source.x, hdg=initial_heading, alt=self.layers[layer].altitude_m * 3.281, spd=spd)
 
-        print(flightplan.waypoints[7])
-        flightplan.waypoints[7].y = 48.217
-        for waypoint in [flightplan.waypoints[0], flightplan.waypoints[1], flightplan.waypoints[7]]:
-            scenario += "00:00:00>ADDWPT D{id} FLYTURN\n".format(id=id)
-            scenario += "00:00:00>ADDWPT D{id} TURNSPEED 10\n".format(id=id)
-            scenario += "00:00:00>ADDWPT D{id} {lat} {lon} {alt} 10\n".format(id=id, lat=waypoint.y,
+        scenario += "00:00:00>ADDWPT D{id} {lat} {lon} {alt} {spd}\n".format(id=id, lat=flightplan.waypoints[0].y,
+                                                                             lon=flightplan.waypoints[0].x,
+                                                                             alt=self.layers[
+                                                                                     layer].altitude_m * 3.281,
+                                                                             spd=spd)
+
+        last_was_turn = False
+
+        for i in range(1, len(flightplan.waypoints)):
+            waypoint = flightplan.waypoints[i]
+
+            if i < len(flightplan.waypoints) - 1:
+                heading1, _, _ = geodesic.inv(flightplan.waypoints[i-1].x, flightplan.waypoints[i-1].y, flightplan.waypoints[i].x,
+                                                     flightplan.waypoints[i].y)
+                heading2, _, _ = geodesic.inv(flightplan.waypoints[i].x, flightplan.waypoints[i].y, flightplan.waypoints[i+1].x,
+                                                     flightplan.waypoints[i+1].y)
+
+                if self.turn_params_table.is_turn_penalized(abs(heading1 - heading2)):
+                    if not last_was_turn:
+                        scenario += "00:00:00>ADDWPT D{id} FLYTURN\n".format(id=id)
+                        scenario += "00:00:00>ADDWPT D{id} TURNSPEED {turn_speed}\n".format(id=id, turn_speed=self.turn_params_table.get_turn_speed_knots(abs(heading1 - heading2)))
+
+                        last_was_turn = True
+                else:
+                    scenario += "00:00:00>ADDWPT D{id} FLYBY\n".format(id=id)
+                    last_was_turn = False
+
+
+            scenario += "00:00:00>ADDWPT D{id} {lat} {lon} {alt} {spd}\n".format(id=id, lat=waypoint.y,
                                                                                  lon=waypoint.x,
                                                                                  alt=self.layers[
                                                                                          layer].altitude_m * 3.281,
                                                                                  spd=spd)
-            # scenario +=
 
         scenario += "00:00:00>LNAV D{id} ON\n".format(id=id)
         scenario += "00:00:00>VNAV D{id} ON\n".format(id=id)
