@@ -1,8 +1,10 @@
+import itertools
 import math
 import queue
 from dataclasses import dataclass
 from typing import Tuple, List, Dict, Set, Union
 
+import pyproj
 from geopy import distance
 import networkx as nx
 
@@ -152,17 +154,54 @@ class StreetNetwork:
 
     def get_subdivided_network(self, edge_length) -> nx.DiGraph:
         subdivided_network = nx.DiGraph()
-        subdivided_network.add_nodes_from(self.original_network)
+        # subdivided_network.add_nodes_from(self.original_network)
 
-        for node in subdivided_network:
-            subdivided_network.nodes[node]['x'] = self.original_network.nodes[node]['x']
-            subdivided_network.nodes[node]['y'] = self.original_network.nodes[node]['y']
-            subdivided_network.nodes[node]['norm_x'] = self.original_network.nodes[node]['norm_x']
-            subdivided_network.nodes[node]['norm_y'] = self.original_network.nodes[node]['norm_y']
-            subdivided_network.nodes[node]['turning'] = True
+        for node in self.original_network.nodes:
+            new_nodes = []
 
-        for (u, v) in self.original_network.edges:
+            new_node_params = {}
+            new_node_params['x'] = self.original_network.nodes[node]['x']
+            new_node_params['y'] = self.original_network.nodes[node]['y']
+            new_node_params['norm_x'] = self.original_network.nodes[node]['norm_x']
+            new_node_params['norm_y'] = self.original_network.nodes[node]['norm_y']
+            new_node_params['turning'] = True
+
+            for v, u in self.original_network.edges(node):
+                new_node_name = '{}@{}'.format(u, v)
+                new_nodes.append((new_node_name, new_node_params))
+
+            additional_edges = []
+            any_turn_penalized = False
+            for (v1, u1), (v2, u2) in itertools.combinations(self.original_network.edges(node), 2):
+                n1 = self.original_network.nodes[u1]
+                n2 = self.original_network.nodes[node]
+                n3 = self.original_network.nodes[u2]
+
+                if u1 == node or u2 == node or v2 != node:
+                    raise Exception
+
+                angle = math.atan2(n3['y'] - n1['y'], n3['x'] - n1['x']) - math.atan2(n2['y'] - n1['y'], n2['x'] - n1['x'])
+
+                additional_edges.append(('{}@{}'.format(u1, v1), '{}@{}'.format(u2, v2), {'turn_cost_edge': True, 'time_cost': self.turn_params_table.get_turn_cost_s(angle), 'penalized': self.turn_params_table.is_turn_penalized(angle)}))
+                additional_edges.append(('{}@{}'.format(u2, v2), '{}@{}'.format(u1, v1), {'turn_cost_edge': True, 'time_cost': self.turn_params_table.get_turn_cost_s(angle), 'penalized': self.turn_params_table.is_turn_penalized(angle)}))
+
+                if self.turn_params_table.is_turn_penalized(angle):
+                    any_turn_penalized = True
+
+            if any_turn_penalized:
+                subdivided_network.add_nodes_from(new_nodes)
+                subdivided_network.add_edges_from(additional_edges)
+            else:
+                subdivided_network.add_node(node, **new_node_params)
+
+        for (v, u) in self.original_network.edges:
             original_length_m = self.original_network[u][v]['length']
+            original_u, original_v = u, v
+            if u not in subdivided_network.nodes:
+                u = '{}@{}'.format(original_v, original_u)
+
+            if v not in subdivided_network.nodes:
+                v = '{}@{}'.format(original_u, original_v)
 
             subdivide_into = math.ceil(original_length_m/edge_length)
 
@@ -190,8 +229,8 @@ class StreetNetwork:
                     norm_y = u_norm_y + (v_norm_y - u_norm_y) * ((i + 1) * edge_length / original_length_m)
                     additional_nodes.append((this_node, {'x': lat, 'y': lon, 'norm_x': norm_x, 'norm_y': norm_y, 'turning': False}))
 
-                    additional_edges.append((previous_node, this_node, {'length': edge_length}))
-                    additional_edges.append((this_node, previous_node, {'length': edge_length}))
+                    additional_edges.append((previous_node, this_node, {'length': edge_length, 'turn_cost_edge': False}))
+                    additional_edges.append((this_node, previous_node, {'length': edge_length, 'turn_cost_edge': False}))
 
                 length = original_length_m % edge_length
                 if length < self.MERGE_THRESHOLD_MULTIPLIER*edge_length:

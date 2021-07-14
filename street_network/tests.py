@@ -4,7 +4,7 @@ from unittest import TestCase
 import networkx as nx
 from geopy import distance
 
-from common import GDP, PathNotFoundException
+from common import GDP, PathNotFoundException, TurnParamsTable, TurnParams
 from path_planner import StreetNetwork, PathPlanner, SNRequest, SNFlightplan
 
 
@@ -37,7 +37,7 @@ class StreetNetworkTestCase(TestCase):
         </graphml>
         """
 
-        sn = StreetNetwork.from_graphml_string(graphml_string)
+        sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         time_ext_network = sn.get_subdivided_network(10)
 
 
@@ -76,7 +76,7 @@ class StreetNetworkTestCase(TestCase):
         </graphml>
         """
 
-        sn = StreetNetwork.from_graphml_string(graphml_string)
+        sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         time_ext_network = sn.get_subdivided_network(10)
 
         self.assertEqual(len(time_ext_network.nodes), 3)
@@ -113,7 +113,7 @@ class StreetNetworkTestCase(TestCase):
         </graphml>
         """
 
-        sn = StreetNetwork.from_graphml_string(graphml_string)
+        sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         time_ext_network = sn.get_subdivided_network(10)
 
         self.assertEqual(len(time_ext_network.nodes), 2)
@@ -147,7 +147,7 @@ class StreetNetworkTestCase(TestCase):
         </graphml>
         """
 
-        sn = StreetNetwork.from_graphml_string(graphml_string)
+        sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         time_ext_network = sn.get_subdivided_network(10)
 
         self.assertEqual(len(time_ext_network.nodes), 3)
@@ -184,7 +184,7 @@ class StreetNetworkTestCase(TestCase):
                 </graphml>
                 """
 
-        sn = StreetNetwork.from_graphml_string(graphml_string)
+        sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         bb = sn._bounding_box_lrbt()
         self.assertEqual(bb.left, 4.2)
         self.assertEqual(bb.right, 11.2)
@@ -250,7 +250,7 @@ class StreetNetworkTestCase(TestCase):
         </graphml>
         """
 
-        sn = StreetNetwork.from_graphml_string(graphml_string)
+        sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         self.assertEqual(sn.original_network.nodes['378699']['norm_y'], 0)
         self.assertEqual(sn.original_network.nodes['26405238']['norm_x'], 621.5565137776072)
         x_diff = sn.original_network.nodes['378699']['norm_x'] - sn.original_network.nodes['33144414']['norm_x']
@@ -260,6 +260,169 @@ class StreetNetworkTestCase(TestCase):
             (sn.original_network.nodes['33144414']['y'], sn.original_network.nodes['33144414']['x']),
         ).m)
         self.assertAlmostEqual(math.sqrt(x_diff**2 + y_diff**2), 130.102, delta=0.1)
+
+
+class StreetNetworkTurnCostTestCase(TestCase):
+    def test_simple_turn_cost(self):
+        graphml_string = """<?xml version='1.0' encoding='utf-8'?>
+                                                                <graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+                                                                  <key id="d12" for="edge" attr.name="length" attr.type="string" />
+                                                                  <key id="d2" for="node" attr.name="x" attr.type="string" />
+                                                                  <key id="d1" for="node" attr.name="y" attr.type="string" />
+                                                                  <graph edgedefault="undirected">
+                                                                    <node id="l">
+                                                                      <data key="d1">0</data>
+                                                                      <data key="d2">-1</data>
+                                                                    </node>
+                                                                    <node id="ll">
+                                                                      <data key="d1">0</data>
+                                                                      <data key="d2">-2</data>
+                                                                    </node>
+                                                                    <node id="r">
+                                                                      <data key="d1">0</data>
+                                                                      <data key="d2">1</data>
+                                                                    </node>
+                                                                    <node id="c">
+                                                                      <data key="d1">0</data>
+                                                                      <data key="d2">0</data>
+                                                                    </node>
+                                                                    <node id="t">
+                                                                      <data key="d1">1</data>
+                                                                      <data key="d2">0</data>
+                                                                    </node>
+                                                                    <node id="b">
+                                                                      <data key="d1">-1</data>
+                                                                      <data key="d2">0</data>
+                                                                    </node>
+
+
+                                                                    <edge source="ll" target="l" id="0">
+                                                                      <data key="d12">40</data>
+                                                                    </edge>
+                                                                    <edge source="l" target="c" id="1">
+                                                                      <data key="d12">40</data>
+                                                                    </edge>
+                                                                    <edge source="r" target="c" id="2">
+                                                                      <data key="d12">40</data>
+                                                                    </edge>
+                                                                    <edge source="t" target="c" id="3">
+                                                                      <data key="d12">40</data>
+                                                                    </edge>
+                                                                    <edge source="b" target="c" id="4">
+                                                                      <data key="d12">40</data>
+                                                                    </edge>
+                                                                  </graph>
+                                                                </graphml>
+                                                                """
+        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False, turn_params_table=TurnParamsTable([
+            TurnParams(0, 30, 30, 0),
+            TurnParams(30, 180, 10, 7)
+        ]))
+
+        sn.original_network.nodes['c']['norm_x'] = 0
+        sn.original_network.nodes['c']['norm_y'] = 0
+
+        sn.original_network.nodes['l']['norm_x'] = -40
+        sn.original_network.nodes['l']['norm_y'] = 0
+
+        sn.original_network.nodes['r']['norm_x'] = 40
+        sn.original_network.nodes['r']['norm_y'] = 0
+
+        sn.original_network.nodes['t']['norm_x'] = 0
+        sn.original_network.nodes['t']['norm_y'] = 40
+
+        sn.original_network.nodes['b']['norm_x'] = 0
+        sn.original_network.nodes['b']['norm_y'] = -40
+
+        sn.original_network.nodes['ll']['norm_x'] = -80
+        sn.original_network.nodes['ll']['norm_y'] = 0
+
+
+        subdivided_network = sn.get_subdivided_network(10)
+
+        self.assertEqual(len(subdivided_network.nodes), 5+4+3*5)
+
+    def test_all_turn_cost(self):
+        graphml_string = """<?xml version='1.0' encoding='utf-8'?>
+                                                                <graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+                                                                  <key id="d12" for="edge" attr.name="length" attr.type="string" />
+                                                                  <key id="d2" for="node" attr.name="x" attr.type="string" />
+                                                                  <key id="d1" for="node" attr.name="y" attr.type="string" />
+                                                                  <graph edgedefault="undirected">
+                                                                    <node id="l">
+                                                                      <data key="d1">0</data>
+                                                                      <data key="d2">-1</data>
+                                                                    </node>
+                                                                    <node id="ll">
+                                                                      <data key="d1">0</data>
+                                                                      <data key="d2">-2</data>
+                                                                    </node>
+                                                                    <node id="r">
+                                                                      <data key="d1">0</data>
+                                                                      <data key="d2">1</data>
+                                                                    </node>
+                                                                    <node id="c">
+                                                                      <data key="d1">0</data>
+                                                                      <data key="d2">0</data>
+                                                                    </node>
+                                                                    <node id="t">
+                                                                      <data key="d1">1</data>
+                                                                      <data key="d2">0</data>
+                                                                    </node>
+                                                                    <node id="b">
+                                                                      <data key="d1">-1</data>
+                                                                      <data key="d2">0</data>
+                                                                    </node>
+
+
+                                                                    <edge source="ll" target="l" id="0">
+                                                                      <data key="d12">40</data>
+                                                                    </edge>
+                                                                    <edge source="l" target="c" id="1">
+                                                                      <data key="d12">40</data>
+                                                                    </edge>
+                                                                    <edge source="r" target="c" id="2">
+                                                                      <data key="d12">40</data>
+                                                                    </edge>
+                                                                    <edge source="t" target="c" id="3">
+                                                                      <data key="d12">40</data>
+                                                                    </edge>
+                                                                    <edge source="b" target="c" id="4">
+                                                                      <data key="d12">40</data>
+                                                                    </edge>
+                                                                  </graph>
+                                                                </graphml>
+                                                                """
+        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False, turn_params_table=TurnParamsTable([
+            TurnParams(0, 180, 10, 7)
+        ]))
+
+        sn.original_network.nodes['c']['norm_x'] = 0
+        sn.original_network.nodes['c']['norm_y'] = 0
+
+        sn.original_network.nodes['l']['norm_x'] = -40
+        sn.original_network.nodes['l']['norm_y'] = 0
+
+        sn.original_network.nodes['r']['norm_x'] = 40
+        sn.original_network.nodes['r']['norm_y'] = 0
+
+        sn.original_network.nodes['t']['norm_x'] = 0
+        sn.original_network.nodes['t']['norm_y'] = 40
+
+        sn.original_network.nodes['b']['norm_x'] = 0
+        sn.original_network.nodes['b']['norm_y'] = -40
+
+        sn.original_network.nodes['ll']['norm_x'] = -80
+        sn.original_network.nodes['ll']['norm_y'] = 0
+
+
+        subdivided_network = sn.get_subdivided_network(60)
+
+        self.assertEqual(6+4, len(subdivided_network.nodes))
+
+        subdivided_network = sn.get_subdivided_network(10)
+
+        self.assertEqual(6 + 4 + 5*3, len(subdivided_network.nodes))
 
 
 class ShortestPathInNetworkTestCase(TestCase):
@@ -301,7 +464,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                   </graph>
                 </graphml>
                 """
-        sn = StreetNetwork.from_graphml_string(graphml_string)
+        sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=0, penalty=1000))
 
         flightplans = pp.resolve_requests([SNRequest('1', '4', 0, 1, 10, 0)])
@@ -346,7 +509,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                           </graph>
                         </graphml>
                         """
-        sn = StreetNetwork.from_graphml_string(graphml_string)
+        sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=0, penalty=1000))
 
         self.assertRaises(PathNotFoundException, pp.resolve_requests, [SNRequest('1', '4', 0, 1, 10, 0)])
@@ -389,7 +552,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                                   </graph>
                                 </graphml>
                                 """
-        sn = StreetNetwork.from_graphml_string(graphml_string)
+        sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=0, penalty=1000))
 
         pp.resolve_requests([SNRequest('1', '4', 0, 1, 10, 0), SNRequest('4', '1', 0, 1, 10, 0)])
@@ -437,7 +600,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                                   </graph>
                                 </graphml>
                                 """
-        sn = StreetNetwork.from_graphml_string(graphml_string)
+        sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=4, penalty=0.5))
 
         pp.resolve_requests([SNRequest('1', '4', 0, 1, 10, 0), SNRequest('4', '1', 0, 1, 10, 0)])
@@ -485,7 +648,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                                           </graph>
                                         </graphml>
                                         """
-        sn = StreetNetwork.from_graphml_string(graphml_string)
+        sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=0, penalty=1000))
 
         pp.resolve_requests([SNRequest('1', '4', 0, 1, 10, 0), SNRequest('4', '1', 1, 1, 10, 0)])
@@ -532,7 +695,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                                                   </graph>
                                                 </graphml>
                                                 """
-        sn = StreetNetwork.from_graphml_string(graphml_string)
+        sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=30, penalty=1))
 
         pp.add_flightplan(SNFlightplan(nodes=[(0, '1'), (1, '3'), (2, '4')], speed_node=1, time_uncertainty=5, radius_m=1, request=None))
@@ -591,7 +754,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                                                   </graph>
                                                 </graphml>
                                                 """
-        sn = StreetNetwork.from_graphml_string(graphml_string)
+        sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=30, penalty=1))
 
         pp.add_flightplan(SNFlightplan(nodes=[(1, 'l'), (2, 'c'), (3, 'r')], speed_node=1, time_uncertainty=0, radius_m=1, request=None))
@@ -650,7 +813,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                                                   </graph>
                                                 </graphml>
                                                 """
-        sn = StreetNetwork.from_graphml_string(graphml_string)
+        sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=30, penalty=1))
 
         pp.add_flightplan(SNFlightplan(nodes=[(1, 'l'), (2, 'c'), (3, 'r')], speed_node=1, time_uncertainty=5, radius_m=1, request=None))
@@ -700,7 +863,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                                           </graph>
                                         </graphml>
                                         """
-        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=True)
+        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=True, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=1000, default_gdp=GDP(max_time=0, penalty=1000))
         pp.add_flightplan(SNFlightplan(nodes=[(0, '1'), (1, '2'), (2, '3')], speed_node=1, time_uncertainty=0, radius_m=50, request=None))
         self.assertEqual(pp._list_of_occupied_nodes_for_request(0, SNRequest('1', '3', 0, 50, 10, 0)), {'1'})
