@@ -29,6 +29,12 @@ class SNRequest:
         self.time_uncertainty_s = time_uncertainty_s
         self.gdp = gdp
 
+    def __str__(self):
+        return 'Request(from "{}" to "{}" at T={} with uncertainty {}s and {}m, speed {}m/s and GDP {})'.format(
+            self.start_node, self.destination_node, self.start_time, self.time_uncertainty_s, self.uncertainty_radius_m,
+            self.speed_m_s, self.gdp
+        )
+
 
 class SNFlightplan:
     nodes: Dict[int, str]
@@ -65,7 +71,17 @@ class SNFlightplan:
             raise Exception('Not present at time {}'.format(time))
 
         if self.speed_node == 1:
-            return [self.nodes[time], ]
+            if time in self.nodes:
+                return [self.nodes[time], ]
+            else:
+                keys = sorted(self.nodes.keys())
+
+                for i in range(len(keys) - 1):
+                    key_1 = keys[i]
+                    key_2 = keys[i + 1]
+                    if key_1 < time < key_2:
+                        return [self.nodes[key_1], self.nodes[key_2]]
+
         else:
             if time in self.nodes:
                 return [self.nodes[time], ]
@@ -173,14 +189,15 @@ class StreetNetwork:
             additional_edges = []
             any_turn_penalized = False
             for (v1, u1), (v2, u2) in itertools.combinations(self.original_network.edges(node), 2):
-                n1 = self.original_network.nodes[u1]
-                n2 = self.original_network.nodes[node]
+                n1 = self.original_network.nodes[node]
+                n2 = self.original_network.nodes[u1]
+
                 n3 = self.original_network.nodes[u2]
 
                 if u1 == node or u2 == node or v2 != node:
                     raise Exception
 
-                angle = math.atan2(n3['y'] - n1['y'], n3['x'] - n1['x']) - math.atan2(n2['y'] - n1['y'], n2['x'] - n1['x'])
+                angle = (math.atan2(n3['norm_y'] - n1['norm_y'], n3['norm_x'] - n1['norm_x']) - math.atan2(n2['norm_y'] - n1['norm_y'], n2['norm_x'] - n1['norm_x'])) * 180/math.pi
 
                 additional_edges.append(('{}@{}'.format(u1, v1), '{}@{}'.format(u2, v2), {'turn_cost_edge': True, 'time_cost': self.turn_params_table.get_turn_cost_s(angle), 'penalized': self.turn_params_table.is_turn_penalized(angle)}))
                 additional_edges.append(('{}@{}'.format(u2, v2), '{}@{}'.format(u1, v1), {'turn_cost_edge': True, 'time_cost': self.turn_params_table.get_turn_cost_s(angle), 'penalized': self.turn_params_table.is_turn_penalized(angle)}))
@@ -194,7 +211,7 @@ class StreetNetwork:
             else:
                 subdivided_network.add_node(node, **new_node_params)
 
-        for (v, u) in self.original_network.edges:
+        for (u, v) in self.original_network.edges:
             original_length_m = self.original_network[u][v]['length']
             original_u, original_v = u, v
             if u not in subdivided_network.nodes:
@@ -229,22 +246,22 @@ class StreetNetwork:
                     norm_y = u_norm_y + (v_norm_y - u_norm_y) * ((i + 1) * edge_length / original_length_m)
                     additional_nodes.append((this_node, {'x': lat, 'y': lon, 'norm_x': norm_x, 'norm_y': norm_y, 'turning': False}))
 
-                    additional_edges.append((previous_node, this_node, {'length': edge_length, 'turn_cost_edge': False}))
-                    additional_edges.append((this_node, previous_node, {'length': edge_length, 'turn_cost_edge': False}))
+                    additional_edges.append((previous_node, this_node, {'length': edge_length, 'turn_cost_edge': False, 'time_cost': 0}))
+                    additional_edges.append((this_node, previous_node, {'length': edge_length, 'turn_cost_edge': False, 'time_cost': 0}))
 
                 length = original_length_m % edge_length
                 if length < self.MERGE_THRESHOLD_MULTIPLIER*edge_length:
                     length = length + edge_length
 
-                additional_edges.append(('{}_{}_{}'.format(u, v, subdivide_into-2), v,  {'length': length}))
-                additional_edges.append((v, '{}_{}_{}'.format(u, v, subdivide_into-2),  {'length': length}))
+                additional_edges.append(('{}_{}_{}'.format(u, v, subdivide_into-2), v,  {'length': length, 'turn_cost_edge': False, 'time_cost': 0}))
+                additional_edges.append((v, '{}_{}_{}'.format(u, v, subdivide_into-2),  {'length': length, 'turn_cost_edge': False, 'time_cost': 0}))
 
                 subdivided_network.add_nodes_from(additional_nodes)
                 subdivided_network.add_edges_from(additional_edges)
             else:
                 subdivided_network.add_edges_from([
-                    (u, v, {'length': original_length_m}),
-                    (v, u, {'length': original_length_m})
+                    (u, v, {'length': original_length_m, 'turn_cost_edge': False, 'time_cost': 0}),
+                    (v, u, {'length': original_length_m, 'turn_cost_edge': False, 'time_cost': 0})
                 ])
 
         return subdivided_network
@@ -320,7 +337,11 @@ class PathPlanner:
 
     @staticmethod
     def _get_node_id(time_ext_node_id) -> str:
-        return time_ext_node_id.split(':')[0]
+        return time_ext_node_id.split(':')[0].split('/')[0]
+
+    @classmethod
+    def _is_node_turning(cls, time_ext_node_id: str) -> bool:
+        return '@' in cls._get_node_id(time_ext_node_id).split('_')[-1]
 
     def _request_time_to_pass_node(self, request: SNRequest) -> int:
         return math.ceil(self.timestep_s/(self.edge_length_m / request.speed_m_s))
@@ -338,20 +359,36 @@ class PathPlanner:
             return self.network[node1][node2]['length']/1000000
 
     def _get_all_neighbours(self, node_id: str, time: int, request: SNRequest) -> List[Tuple[str, float]]:
-        occupied = self._list_of_occupied_nodes_for_request(time + self._request_time_to_pass_node(request), request)
+        nodes = list(self.network.neighbors(node_id))
 
-        pending_movements = self.list_of_pending_drone_movements(time + self._request_time_to_pass_node(request))
+        max_lookup_time = self._request_time_to_pass_node(request)
 
-        nodes = self.network.neighbors(node_id)
-        time_augmented_nodes = [self.time_ext_node_id(x, time + self._request_time_to_pass_node(request)) for x in nodes]
-        time_augmented_nodes.append(self.time_ext_node_id(node_id, time + self._request_time_to_pass_node(request)))
+        for node in nodes:
+            edge_data = self.network.edges[node_id, node]
+            if edge_data['time_cost'] > max_lookup_time:
+                max_lookup_time = edge_data['time_cost']
+
+        occupied = {}
+        pending_movements = {}
+
+        for i in range(1, max(self._request_time_to_pass_node(request), max_lookup_time) + 1):
+            occupied[i] = self._list_of_occupied_nodes_for_request(time + i, request)
+            pending_movements[i] = self.list_of_pending_drone_movements(time + i)
 
         neighbours = []
-        for node in time_augmented_nodes:
-            if self._get_node_id(node) not in occupied and (self._get_node_id(node), node_id) not in pending_movements:
-                neighbours.append((node, 1 + self._get_edge_penalty(node_id, self._get_node_id(node))))
+        for node in nodes:
+            edge_data = self.network.edges[node_id, node]
+            time_cost = max(self._request_time_to_pass_node(request), edge_data['time_cost'])
+            available = True
 
-        if self._get_node_id(node_id) == request.destination_node:
+            for i in range(1, time_cost + 1):
+                if not(node not in occupied[i] and node_id not in occupied[i] and (node, node_id) not in pending_movements[i]):
+                    available = False
+
+            if available:
+                neighbours.append((self.time_ext_node_id(node, time + time_cost), time_cost)) # add + get_edge_penalty() if needed
+
+        if node_id == request.destination_node:
             neighbours.append((self.SINK_NODE_ID, 0))
 
         return neighbours

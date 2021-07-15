@@ -62,11 +62,11 @@ class TurnParamsTable:
                 raise Exception('Wrong turn costs!')
 
     def get_turn_params(self, angle: float) -> TurnParams:
-        while angle > 180:
-            angle -= 180
+        if angle < 0:
+            angle = abs(angle)
 
-        while angle < 0:
-            angle += 180
+        while angle >= 180:
+            angle -= 180
 
         for params in self.turn_params_table:
             if params.angle_from <= angle < params.angle_to:
