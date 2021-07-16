@@ -5,7 +5,7 @@ import queue
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Tuple, List, Dict, Set, Union
-
+from geomet import wkt
 import pyproj
 from geopy import distance
 import networkx as nx
@@ -126,9 +126,9 @@ class StreetNetwork:
         bottom: float
         top: float
 
-    MERGE_THRESHOLD_MULTIPLIER = 0.05
+    MERGE_THRESHOLD_MULTIPLIER = 0.3
 
-    def __init__(self, network: nx.Graph, turn_params_table: TurnParamsTable, recompute_lengths: bool = False):
+    def __init__(self, network: nx.Graph, turn_params_table: TurnParamsTable, recompute_lengths: bool = False, geometry_graph: nx.Graph = None):
         self.original_network: nx.Graph = network
         self._convert_attributes_to_numbers()
 
@@ -137,6 +137,7 @@ class StreetNetwork:
 
         self._compute_normalized_positions()
         self.turn_params_table = turn_params_table
+        self.geometry_graph = geometry_graph
         # self._compute_distances()
 
     def _recompute_edges_lengths(self):
@@ -176,16 +177,20 @@ class StreetNetwork:
         return self.BoundingBox(left=left, right=right, top=top, bottom=bottom)
 
     @classmethod
-    def from_graphml_file(cls, filename, turn_params_table: TurnParamsTable, recompute_lengths: bool = False):
+    def from_graphml_file(cls, filename: str, turn_params_table: TurnParamsTable, recompute_lengths: bool = False):
         network = nx.read_graphml(filename)
         return cls(network, recompute_lengths=recompute_lengths, turn_params_table=turn_params_table)
 
     @classmethod
-    def from_graphml_string(cls, graphml, turn_params_table: TurnParamsTable, recompute_lengths: bool = False):
+    def from_graphml_string(cls, graphml: str, turn_params_table: TurnParamsTable, recompute_lengths: bool = False):
         network = nx.parse_graphml(graphml)
         return cls(network, turn_params_table=turn_params_table, recompute_lengths=recompute_lengths)
 
     def get_subdivided_network(self, edge_length) -> nx.DiGraph:
+        bounding_box = self._bounding_box_lrbt()
+        height = distance.distance((bounding_box.bottom, bounding_box.left), (bounding_box.top, bounding_box.left)).m
+        width = distance.distance((bounding_box.bottom, bounding_box.left), (bounding_box.bottom, bounding_box.right)).m
+
         subdivided_network = nx.DiGraph()
         # subdivided_network.add_nodes_from(self.original_network)
 
@@ -249,19 +254,62 @@ class StreetNetwork:
                 for i in range(subdivide_into-1):
                     this_node = '{}_{}_{}'.format(u, v, i)
                     previous_node = '{}_{}_{}'.format(u, v, i-1) if i != 0 else u
-                    u_x = subdivided_network.nodes[u]['x']
-                    u_y = subdivided_network.nodes[u]['y']
-                    u_norm_x = subdivided_network.nodes[u]['norm_x']
-                    u_norm_y = subdivided_network.nodes[u]['norm_y']
-                    v_x = subdivided_network.nodes[v]['x']
-                    v_y = subdivided_network.nodes[v]['y']
-                    v_norm_x = subdivided_network.nodes[v]['norm_x']
-                    v_norm_y = subdivided_network.nodes[v]['norm_y']
-                    lat = u_x + (v_x - u_x)*((i+1)*edge_length/original_length_m)
-                    lon = u_y + (v_y - u_y)*((i+1)*edge_length/original_length_m)
-                    norm_x = u_norm_x + (v_norm_x - u_norm_x) * ((i + 1) * edge_length / original_length_m)
-                    norm_y = u_norm_y + (v_norm_y - u_norm_y) * ((i + 1) * edge_length / original_length_m)
-                    additional_nodes.append((this_node, {'x': lat, 'y': lon, 'norm_x': norm_x, 'norm_y': norm_y, 'turning': False}))
+                    current_length = (i+1)*edge_length
+
+                    if 'geometry' in self.original_network.edges[original_u, original_v]:
+                        geometry = self.original_network.edges[original_u, original_v]['geometry']
+                        geometry = wkt.loads(geometry)
+                        if geometry['type'] != 'LineString':
+                            raise Exception('Not supported!')
+
+                        if abs(geometry['coordinates'][0][0] - subdivided_network.nodes[u]['x']) > 0.000001 or abs(geometry['coordinates'][0][1] - subdivided_network.nodes[u]['y']) > 0.000001:
+                            geometry['coordinates'].reverse()
+
+                        lengths = []
+
+                        for j in range(len(geometry['coordinates'])-1):
+                            c1 = geometry['coordinates'][j]
+                            c2 = geometry['coordinates'][j+1]
+                            length = distance.great_circle((c1[1], c1[0]), (c2[1], c2[0])).m
+                            lengths.append(length)
+
+                        sum_length = 0
+                        new_ratio = 0
+                        selected_geometry_edge_i = 0
+
+                        for geometry_edge_i, length in enumerate(lengths):
+                            sum_length += length
+                            if sum_length > current_length:
+                                selected_geometry_edge_i = geometry_edge_i
+                                new_ratio = (current_length-(sum_length - length))/length
+                                break
+
+                        ci1 = geometry['coordinates'][selected_geometry_edge_i]
+                        ci2 = geometry['coordinates'][selected_geometry_edge_i + 1]
+                        lon = ci1[0] + (ci2[0] - ci1[0]) * new_ratio
+                        lat = ci1[1] + (ci2[1] - ci1[1]) * new_ratio
+                        norm_x = ((lon - bounding_box.left) / (
+                                    bounding_box.right - bounding_box.left)) * width
+                        norm_y = ((lat - bounding_box.bottom) / (
+                                    bounding_box.top - bounding_box.bottom)) * height
+
+                    else:
+                        ratio = (current_length / original_length_m)
+
+                        u_x = subdivided_network.nodes[u]['x']
+                        u_y = subdivided_network.nodes[u]['y']
+                        u_norm_x = subdivided_network.nodes[u]['norm_x']
+                        u_norm_y = subdivided_network.nodes[u]['norm_y']
+                        v_x = subdivided_network.nodes[v]['x']
+                        v_y = subdivided_network.nodes[v]['y']
+                        v_norm_x = subdivided_network.nodes[v]['norm_x']
+                        v_norm_y = subdivided_network.nodes[v]['norm_y']
+                        lon = u_x + (v_x - u_x)*ratio
+                        lat = u_y + (v_y - u_y)*ratio
+                        norm_x = u_norm_x + (v_norm_x - u_norm_x) * ratio
+                        norm_y = u_norm_y + (v_norm_y - u_norm_y) * ratio
+
+                    additional_nodes.append((this_node, {'x': lon, 'y': lat, 'norm_x': norm_x, 'norm_y': norm_y, 'turning': False}))
 
                     additional_edges.append((previous_node, this_node, {'length': edge_length, 'turn_cost_edge': False, 'time_cost': 0}))
                     additional_edges.append((this_node, previous_node, {'length': edge_length, 'turn_cost_edge': False, 'time_cost': 0}))

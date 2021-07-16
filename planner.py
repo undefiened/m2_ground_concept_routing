@@ -1,3 +1,4 @@
+import copy
 import datetime
 import itertools
 import math
@@ -6,6 +7,7 @@ from enum import Enum, unique
 from typing import Tuple, List, Dict
 
 import networkx as nx
+import numpy
 import numpy as np
 import pyclipper
 from networkx import NetworkXNoPath
@@ -293,40 +295,75 @@ class RoutePlanner:
         return scenarios
 
     def convert_flightplan_to_M2_scenario(self, flightplan: Flightplan, layer: int, id: int) -> str:
+        EVERY_NON_TURNING = 7
+
         geodesic = pyproj.Geod(ellps='WGS84')
 
         scenario = ""
 
         source = flightplan.waypoints[0]
+
+        turning = [x.turning for x in flightplan.waypoints]
+
+        series_of_non_turning = []
+
+        start = 0
+        started = False
+        for i, t in enumerate(turning):
+            if t:
+                if started:
+                    started = False
+                    series_of_non_turning.append((start, i-1))
+            else:
+                if not started:
+                    start = i
+                    started = True
+
+        waypoints_to_remove = []
+
+        for serie in series_of_non_turning:
+            serie_size = serie[1] - serie[0] + 1
+            if serie_size > EVERY_NON_TURNING:
+                number_of_waypoints_to_keep = math.floor(serie_size / EVERY_NON_TURNING)
+                waypoints_to_keep = numpy.floor(numpy.linspace(serie[0], serie[1], number_of_waypoints_to_keep + 2)[1:-1])
+            else:
+                waypoints_to_keep = []
+
+            for i in range(serie[0], serie[1]+1):
+                if i not in waypoints_to_keep:
+                    waypoints_to_remove.append(i)
+
+        waypoints = [x for i, x in enumerate(flightplan.waypoints) if i not in waypoints_to_remove]
+
         spd = 30
-        initial_heading, _, _ = geodesic.inv(source.x, source.y, flightplan.waypoints[1].x, flightplan.waypoints[1].y)
+        initial_heading, _, _ = geodesic.inv(source.x, source.y, waypoints[1].x, waypoints[1].y)
 
         time = '0' + str(datetime.timedelta(seconds=flightplan.departure_time))
 
-        for i in range(len(flightplan.waypoints)):
-            scenario += "00:00:00>DEFWPT D{id}_{i},{lat},{lon},FIX\n".format(id=id, i=i, lat=flightplan.waypoints[i].y,
-                                                                             lon=flightplan.waypoints[i].x)
+        for i in range(len(waypoints)):
+            scenario += "00:00:00>DEFWPT D{id}_{i},{lat},{lon},FIX\n".format(id=id, i=i, lat=waypoints[i].y,
+                                                                             lon=waypoints[i].x)
 
         scenario += "{time}>CRE D{id} M600 {lat} {lon} {hdg} {alt} {spd}\n".format(id=id, lat=source.y, lon=source.x, hdg=initial_heading, alt=self.layers[layer].altitude_m * 3.281, spd=spd, time=time)
 
-        scenario += "{time}>ADDWPT D{id} D{id}_{i} {alt} {spd}\n".format(id=id, i=0, lat=flightplan.waypoints[0].y,
-                                                                             lon=flightplan.waypoints[0].x,
+        scenario += "{time}>ADDWPT D{id} D{id}_{i} {alt} {spd}\n".format(id=id, i=0, lat=waypoints[0].y,
+                                                                             lon=waypoints[0].x,
                                                                              alt=self.layers[
                                                                                      layer].altitude_m * 3.281,
                                                                              spd=spd, time=time)
 
         last_was_turn = False
 
-        for i in range(1, len(flightplan.waypoints)):
-            waypoint = flightplan.waypoints[i]
+        for i in range(1, len(waypoints)):
+            waypoint = waypoints[i]
 
-            if i < len(flightplan.waypoints) - 1:
-                heading1, _, _ = geodesic.inv(flightplan.waypoints[i-1].x, flightplan.waypoints[i-1].y, flightplan.waypoints[i].x,
-                                                     flightplan.waypoints[i].y)
-                heading2, _, _ = geodesic.inv(flightplan.waypoints[i].x, flightplan.waypoints[i].y, flightplan.waypoints[i+1].x,
-                                                     flightplan.waypoints[i+1].y)
+            if i < len(waypoints) - 1:
+                heading1, _, _ = geodesic.inv(waypoints[i-1].x, waypoints[i-1].y, waypoints[i].x,
+                                                     waypoints[i].y)
+                heading2, _, _ = geodesic.inv(waypoints[i].x, waypoints[i].y, waypoints[i+1].x,
+                                                     waypoints[i+1].y)
 
-                if self.turn_params_table.is_turn_penalized(abs(heading1 - heading2)):
+                if self.turn_params_table.is_turn_penalized(abs(heading1 - heading2)) and (not waypoints[i-1].turning or not waypoints[i].turning or waypoints[i+1].turning):
                     if not last_was_turn:
                         scenario += "{time}>ADDWPT D{id} FLYTURN\n".format(id=id, time=time)
                         scenario += "{time}>ADDWPT D{id} TURNSPEED {turn_speed}\n".format(id=id, turn_speed=self.turn_params_table.get_turn_speed_knots(abs(heading1 - heading2)), time=time)
@@ -347,10 +384,10 @@ class RoutePlanner:
                                                                                          layer].altitude_m * 3.281,
                                                                                  spd=spd, time=time)
 
-            if not last_was_turn:
+            if not last_was_turn and waypoints[i].turning:
                 scenario += "{time}>RTA D{id} D{id}_{i} {time2}\n".format(id=id, i=i, time=time, time2=str(datetime.timedelta(seconds=waypoint.time)))
 
-        scenario += "{time}>D{id} ATDIST {lat} {lon} 0.01 DEL D{id}\n".format(id=id, lat=flightplan.waypoints[-1].y, lon=flightplan.waypoints[-1].x, time=time)
+        scenario += "{time}>D{id} ATDIST {lat} {lon} 0.01 DEL D{id}\n".format(id=id, lat=waypoints[-1].y, lon=waypoints[-1].x, time=time)
 
         scenario += "{time}>LNAV D{id} ON\n".format(id=id, time=time)
         scenario += "{time}>VNAV D{id} ON\n".format(id=id, time=time)
