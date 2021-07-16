@@ -12,6 +12,7 @@ class PathNotFoundException(Exception):
 
 @dataclass
 class GDP:
+    time_step: int
     max_time: int
     penalty: float
 
@@ -25,6 +26,9 @@ class Request:
     departure_time: int
     uncertainty_radius_m: float
     gdp: GDP
+
+    def __hash__(self):
+        return hash(repr(self))
 
 
 @dataclass
@@ -168,60 +172,6 @@ class Flightplan:
                 norm_y=w1.norm_y + ratio*(w2.norm_y-w1.norm_y),
                 time=time
             ))
-        # for i in range(len(self.waypoints)-1):
-        #     if self.waypoints[i].time <= time_from < self.waypoints[i + 1].time:
-        #         w1 = self.waypoints[i]
-        #         w2 = self.waypoints[i+1]
-        #         ratio = (time_from-w1.time)/(w2.time-w1.time)
-        #         position_range_waypoints.append(self.Waypoint(
-        #             x=w1.x + ratio*(w2.x-w1.x),
-        #             y=w1.y + ratio*(w2.y-w1.y),
-        #             norm_x=w1.norm_x + ratio*(w2.norm_x-w1.norm_x),
-        #             norm_y=w1.norm_y + ratio*(w2.norm_y-w1.norm_y),
-        #             time=time
-        #         ))
-        #
-        #     if self.waypoints[i].time > time_from and self.waypoints[i].time < time_to:
-        #         w1 = self.waypoints[i]
-        #         position_range_waypoints.append(self.Waypoint(
-        #             x=w1.x,
-        #             y=w1.y,
-        #             norm_x=w1.norm_x,
-        #             norm_y=w1.norm_y,
-        #             time=time
-        #         ))
-        #
-        #     if self.waypoints[i].time > time_from and self.waypoints[i+1].time > time_from and self.waypoints[i].time < time_to and self.waypoints[i+1].time <= time_to:
-        #         w1 = self.waypoints[i]
-        #         position_range_waypoints.append(self.Waypoint(
-        #             x=w1.x,
-        #             y=w1.y,
-        #             norm_x=w1.norm_x,
-        #             norm_y=w1.norm_y,
-        #             time=time
-        #         ))
-        #
-        #     if self.waypoints[i].time <= time_to < self.waypoints[i + 1].time:
-        #         w1 = self.waypoints[i]
-        #         w2 = self.waypoints[i + 1]
-        #         ratio = (time_to - w1.time) / (w2.time - w1.time)
-        #         position_range_waypoints.append(self.Waypoint(
-        #             x=w1.x + ratio * (w2.x - w1.x),
-        #             y=w1.y + ratio * (w2.y - w1.y),
-        #             norm_x=w1.norm_x + ratio * (w2.norm_x - w1.norm_x),
-        #             norm_y=w1.norm_y + ratio * (w2.norm_y - w1.norm_y),
-        #             time=time
-        #         ))
-        #
-        # if time_to >= self.waypoints[-1].time:
-        #     w1 = self.waypoints[-1]
-        #     position_range_waypoints.append(self.Waypoint(
-        #         x=w1.x,
-        #         y=w1.y,
-        #         norm_x=w1.norm_x,
-        #         norm_y=w1.norm_y,
-        #         time=time
-        #     ))
 
         return position_range_waypoints
 
@@ -232,41 +182,60 @@ class Flightplan:
 
         waypoints.append(cls.Waypoint(graph.nodes[path[0]]['x'], graph.nodes[path[0]]['y'], graph.nodes[path[0]]['norm_x'], graph.nodes[path[0]]['norm_y'], request.departure_time))
 
-        length = 0
+        time_cost = 0
         for i in range(len(path)-1):
             # node1 = graph.nodes[path[i]]
             end_node = graph.nodes[path[i+1]]
-            length += graph.edges[path[i], path[i + 1]]['length']
-            if end_node['turning']:
-                time = length/request.speed_m_s
+            time_cost += graph.edges[path[i], path[i + 1]]['time_cost']
+            if end_node['turning'] and not graph.nodes[path[i]]['turning']:
+                # time = length/request.speed_m_s
 
-                waypoints.append(cls.Waypoint(end_node['x'], end_node['y'], end_node['norm_x'], end_node['norm_y'], previous_node_finish_time + time))
+                waypoints.append(cls.Waypoint(end_node['x'], end_node['y'], end_node['norm_x'], end_node['norm_y'], previous_node_finish_time + time_cost))
 
-                previous_node_finish_time = previous_node_finish_time + time
-                length = 0
+                previous_node_finish_time = previous_node_finish_time + time_cost
+                time_cost = 0
 
         return cls(waypoints, request.time_uncertainty_s, request.speed_m_s)
 
     @classmethod
     def from_sn_flightplan(cls, graph: nx.Graph, sn_flightplan: "SNFlightplan"):
         waypoints = []
-        previous_node_finish_time = sn_flightplan.start_time
 
         path = sn_flightplan.nodes
+        path_keys = list(path.keys())
+
+        ground_delay = 0
+        for i in range(len(path) - 1):
+            if path[path_keys[i]] != path[path_keys[i + 1]]:
+                ground_delay = i
+                break
+
+        previous_node_finish_time = path_keys[ground_delay]
 
         waypoints.append(
-            cls.Waypoint(graph.nodes[path[0]]['x'], graph.nodes[path[0]]['y'], graph.nodes[path[0]]['norm_x'],
-                         graph.nodes[path[0]]['norm_y'], sn_flightplan.start_time))
+            cls.Waypoint(graph.nodes[path[path_keys[ground_delay]]]['x'], graph.nodes[path[path_keys[ground_delay]]]['y'], graph.nodes[path[path_keys[ground_delay]]]['norm_x'],
+                         graph.nodes[path[path_keys[ground_delay]]]['norm_y'], previous_node_finish_time))
 
-        for i in range(len(path) - 1):
-            # node1 = graph.nodes[path[i]]
-            end_node = graph.nodes[path[i + 1]]
 
-            length = graph.edges[path[i], path[i + 1]]['length']
-            time = length / sn_flightplan.request.speed_m_s
+        for i in range(ground_delay+1, len(path) - 1):
+            # print('-------------------')
+            # print((path_keys[i], path_keys[i+1]))
+            # print((path[path_keys[i]], path[path_keys[i + 1]]))
+            # print(graph.edges[path[path_keys[i]], path[path_keys[i + 1]]])
 
-            waypoints.append(cls.Waypoint(end_node['x'], end_node['y'], end_node['norm_x'], end_node['norm_y'],
-                                          previous_node_finish_time + time))
+            if graph.has_edge(path[path_keys[i]], path[path_keys[i + 1]]):
+                time = graph.edges[path[path_keys[i]], path[path_keys[i + 1]]]['time_cost']
+            else:
+                time = 0
+
+            if graph.nodes[path[path_keys[i + 1]]]['turning'] and (graph.nodes[path[path_keys[i]]]['x'] != graph.nodes[path[path_keys[i+1]]]['x'] or graph.nodes[path[path_keys[i]]]['y'] != graph.nodes[path[path_keys[i+1]]]['y']):
+                # node1 = graph.nodes[path[i]]
+                end_node = graph.nodes[path[path_keys[i + 1]]]
+
+                # time = length / sn_flightplan.request.speed_m_s
+
+                waypoints.append(cls.Waypoint(end_node['x'], end_node['y'], end_node['norm_x'], end_node['norm_y'],
+                                              previous_node_finish_time + time))
 
             previous_node_finish_time = previous_node_finish_time + time
 

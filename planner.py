@@ -1,4 +1,6 @@
+import datetime
 import itertools
+import math
 from dataclasses import dataclass
 from enum import Enum, unique
 from typing import Tuple, List, Dict
@@ -8,7 +10,7 @@ import numpy as np
 import pyclipper
 from networkx import NetworkXNoPath
 
-from common import GDP, Request, Flightplan, TurnParamsTable
+from common import GDP, Request, Flightplan, TurnParamsTable, PathNotFoundException
 from street_network.path_planner import PathPlanner as SNPathPlanner, StreetNetwork, SNRequest
 from pyclipper import *
 from mip import Model, xsum, minimize, BINARY
@@ -77,8 +79,9 @@ class RoutePlanner:
         return max(self.layers, key=lambda x: x.altitude_m)
 
     def _find_shortest_path_in_top_layer(self, request: SNRequest):
-        flightplan = nx.shortest_path(self.top_layer.path_planner.network, request.start_node, request.destination_node, 'length')
-        flightplan_length = nx.path_weight(self.top_layer.path_planner.network, flightplan, 'length')
+        time_cost_enhanced_network = self.top_layer.path_planner.get_time_cost_enhanced_network(request.speed_m_s)
+        flightplan = nx.shortest_path(time_cost_enhanced_network, request.start_node, request.destination_node, 'time_cost')
+        flightplan_length = nx.path_weight(time_cost_enhanced_network, flightplan, 'time_cost')
         return flightplan, flightplan_length
 
     def _available_layers_intersect(self, route1: FlightplanToColor, route2: FlightplanToColor) -> bool:
@@ -166,7 +169,7 @@ class RoutePlanner:
             for i, layer in enumerate(self.layers):
                 layer_available = True
                 try:
-                    nx.path_weight(layer.path_planner.network, shortest_path, 'length')
+                    nx.path_weight(layer.path_planner.get_time_cost_enhanced_network(request.speed_m_s), shortest_path, 'time_cost')
                 except NetworkXNoPath as e:
                     layer_available = False
 
@@ -174,7 +177,7 @@ class RoutePlanner:
                     available_layers.append(i)
 
             flightplans_to_color.append(
-                self.FlightplanToColor(available_layers, shortest_path, Flightplan.from_graph_path(self.top_layer.path_planner.network, shortest_path, request), sn_request)
+                self.FlightplanToColor(available_layers, shortest_path, Flightplan.from_graph_path(self.top_layer.path_planner.get_time_cost_enhanced_network(sn_request.speed_m_s), shortest_path, request), sn_request)
             )
 
         return flightplans_to_color
@@ -230,10 +233,7 @@ class RoutePlanner:
         else:
             return None
 
-    def convert_flightplans_to_M2_scenarios(self, flightplans: List[Flightplan], layers: List[int]) -> List[str]:
-        pass
-
-    def resolve_requests(self, requests: List[Request]):
+    def resolve_requests(self, requests: List[Request], skip_coloring=False):
         """
         TODO: find shortest path on the top layer.
         Find all layers where the shortest path is fine.
@@ -241,29 +241,52 @@ class RoutePlanner:
         Use python-mip https://docs.python-mip.com/en/latest/examples.html + https://projects.coin-or.org/Cbc solver (may switch to Gurobi if needed)
         Start with hex shortest paths probably. Then if there is time, switch to https://pypi.org/project/pyclipper/ and straight routes.
         """
-        layers, flightplans = self._attempt_coloring(requests)
+        print('ATTEMPTING COLORING')
+        if not skip_coloring:
+            layers, flightplans = self._attempt_coloring(requests)
+        else:
+            flightplans = self._prepare_flightplans_to_color(requests)
 
-        if layers:
+        if not skip_coloring and layers:
+            print('COLORING WAS SUCCESSFUL, THE SOLUTION IS OPTIMAL')
             return self.convert_flightplans_to_M2_scenarios([x.flightplan for x in flightplans], layers)
         else:
+            print('COLORING FAILED, USING TIME-EXPANDED NETWORK')
             layers = []
-            flightplans = []
+            te_flightplans = []
 
-            for flightplan in flightplans:
+            for i, flightplan in enumerate(flightplans):
+                print('PLANNING FLIGHTPLAN {}'.format(i))
                 layers_flightplans = []
 
+                fp = None
                 for layer in self.layers:
-                    layers_flightplans.append(layer.path_planner.resolve_request(flightplan.sn_request))
+                    try:
+                        fp = layer.path_planner.resolve_request(flightplan.sn_request)
+                    except PathNotFoundException as e:
+                        print(str(e) + "in layer {}".format(layer))
 
-                best_flightplan_layer, best_flightplan = min(enumerate(layers_flightplans), key=lambda x: x[1].weight)
-                self.layers[best_flightplan_layer].path_planner.add_flightplan(best_flightplan)
-                layers.append(best_flightplan_layer)
-                flightplans.append(Flightplan.from_sn_flightplan(self.layers[best_flightplan_layer].path_planner.network, best_flightplan))
+                    layers_flightplans.append(fp)
 
-            return self.convert_flightplans_to_M2_scenarios(flightplans, layers)
+                best_flightplan_layer, best_flightplan = min(enumerate(layers_flightplans), key=lambda x: x[1].weight if x[1] is not None else math.inf)
+                if best_flightplan is not None:
+                    self.layers[best_flightplan_layer].path_planner.add_flightplan(best_flightplan)
+                    layers.append(best_flightplan_layer)
+                    te_flightplans.append(Flightplan.from_sn_flightplan(self.layers[best_flightplan_layer].path_planner.get_time_cost_enhanced_network(flightplan.sn_request.speed_m_s), best_flightplan))
+
+            return self.convert_flightplans_to_M2_scenarios(te_flightplans, layers)
 
     def convert_flightplans_to_M2_scenarios(self, flightplans: List[Flightplan], layers: List[int]) -> List[str]:
         scenarios = []
+        header = ""
+        header += "00:00:00>HOLD\n"
+        header += "00:00:00>ASAS ON\n"
+        header += "00:00:00>PAN 48.223775 16.337976\n"
+        header += "00:00:00>ZOOM 50\n"
+        header += "00:00:00>VIS MAP TILEDMAP\n"
+        header += "00:00:00>ZONER 0.0161987\n"
+
+        scenarios.append(header)
         for i in range(len(flightplans)):
             scenarios.append(self.convert_flightplan_to_M2_scenario(flightplans[i], layers[i], i))
 
@@ -273,22 +296,24 @@ class RoutePlanner:
         geodesic = pyproj.Geod(ellps='WGS84')
 
         scenario = ""
-        scenario += "00:00:00>HOLD\n"
-        scenario += "00:00:00>PAN 48.223775 16.337976\n"
-        scenario += "00:00:00>ZOOM 50\n"
-        scenario += "00:00:00>VIS MAP TILEDMAP\n"
 
         source = flightplan.waypoints[0]
         spd = 30
         initial_heading, _, _ = geodesic.inv(source.x, source.y, flightplan.waypoints[1].x, flightplan.waypoints[1].y)
 
-        scenario += "00:00:00>CRE D{id} M600 {lat} {lon} {hdg} {alt} {spd}\n".format(id=id, lat=source.y, lon=source.x, hdg=initial_heading, alt=self.layers[layer].altitude_m * 3.281, spd=spd)
+        time = '0' + str(datetime.timedelta(seconds=flightplan.departure_time))
 
-        scenario += "00:00:00>ADDWPT D{id} {lat} {lon} {alt} {spd}\n".format(id=id, lat=flightplan.waypoints[0].y,
+        for i in range(len(flightplan.waypoints)):
+            scenario += "00:00:00>DEFWPT D{id}_{i},{lat},{lon},FIX\n".format(id=id, i=i, lat=flightplan.waypoints[i].y,
+                                                                             lon=flightplan.waypoints[i].x)
+
+        scenario += "{time}>CRE D{id} M600 {lat} {lon} {hdg} {alt} {spd}\n".format(id=id, lat=source.y, lon=source.x, hdg=initial_heading, alt=self.layers[layer].altitude_m * 3.281, spd=spd, time=time)
+
+        scenario += "{time}>ADDWPT D{id} D{id}_{i} {alt} {spd}\n".format(id=id, i=0, lat=flightplan.waypoints[0].y,
                                                                              lon=flightplan.waypoints[0].x,
                                                                              alt=self.layers[
                                                                                      layer].altitude_m * 3.281,
-                                                                             spd=spd)
+                                                                             spd=spd, time=time)
 
         last_was_turn = False
 
@@ -303,22 +328,39 @@ class RoutePlanner:
 
                 if self.turn_params_table.is_turn_penalized(abs(heading1 - heading2)):
                     if not last_was_turn:
-                        scenario += "00:00:00>ADDWPT D{id} FLYTURN\n".format(id=id)
-                        scenario += "00:00:00>ADDWPT D{id} TURNSPEED {turn_speed}\n".format(id=id, turn_speed=self.turn_params_table.get_turn_speed_knots(abs(heading1 - heading2)))
+                        scenario += "{time}>ADDWPT D{id} FLYTURN\n".format(id=id, time=time)
+                        scenario += "{time}>ADDWPT D{id} TURNSPEED {turn_speed}\n".format(id=id, turn_speed=self.turn_params_table.get_turn_speed_knots(abs(heading1 - heading2)), time=time)
 
                         last_was_turn = True
                 else:
-                    scenario += "00:00:00>ADDWPT D{id} FLYBY\n".format(id=id)
-                    last_was_turn = False
+                    if last_was_turn:
+                        scenario += "{time}>ADDWPT D{id} FLYBY\n".format(id=id, time=time)
+                        last_was_turn = False
 
+            else:
+                last_was_turn = False
+                scenario += "{time}>ADDWPT D{id} FLYBY\n".format(id=id, time=time)
 
-            scenario += "00:00:00>ADDWPT D{id} {lat} {lon} {alt} {spd}\n".format(id=id, lat=waypoint.y,
+            scenario += "{time}>ADDWPT D{id} D{id}_{i} {alt} ,\n".format(id=id, i=i, lat=waypoint.y,
                                                                                  lon=waypoint.x,
                                                                                  alt=self.layers[
                                                                                          layer].altitude_m * 3.281,
-                                                                                 spd=spd)
+                                                                                 spd=spd, time=time)
 
-        scenario += "00:00:00>LNAV D{id} ON\n".format(id=id)
-        scenario += "00:00:00>VNAV D{id} ON\n".format(id=id)
+            if not last_was_turn:
+                scenario += "{time}>RTA D{id} D{id}_{i} {time2}\n".format(id=id, i=i, time=time, time2=str(datetime.timedelta(seconds=waypoint.time)))
+
+        scenario += "{time}>D{id} ATDIST {lat} {lon} 0.01 DEL D{id}\n".format(id=id, lat=flightplan.waypoints[-1].y, lon=flightplan.waypoints[-1].x, time=time)
+
+        scenario += "{time}>LNAV D{id} ON\n".format(id=id, time=time)
+        scenario += "{time}>VNAV D{id} ON\n".format(id=id, time=time)
 
         return scenario
+
+
+class TacticalResolution:
+    def __init__(self, layers: List[Layer], known_flightplans: List[Flightplan]):
+        pass
+
+    def resolve_traffic(self, drones_deviated_from_flightplans: List[str], drones_positions: List[Tuple[str, float, float]]):
+        pass

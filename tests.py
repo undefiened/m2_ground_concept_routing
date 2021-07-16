@@ -1,8 +1,10 @@
 from unittest import TestCase
 
-from common import Flightplan, GDP, Request
+from common import Flightplan, GDP, Request, TurnParamsTable, TurnParams
 from planner import RoutePlanner, Layer
-from street_network.path_planner import PathPlanner, StreetNetwork, SNRequest
+from street_network.path_planner import PathPlanner, StreetNetwork, SNRequest, SNFlightplan
+
+NO_GDP = GDP(1, 0, 10000)
 
 
 class PlannerColoringTestCase(TestCase):
@@ -132,13 +134,13 @@ class PlannerColoringTestCase(TestCase):
                                                   </graph>
                                                 </graphml>
                                                 """
-        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=True)
+        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=True, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         layers = [
-            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, GDP(0, 10000))),
-            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, GDP(0, 10000))),
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
         ]
-        rp = RoutePlanner(layers=layers)
+        rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         colors = rp._color_flightplans([RoutePlanner.FlightplanToColor([0, 1], [], None, None), RoutePlanner.FlightplanToColor([0, 1], [], None, None)], [(0, 1), ])
         self.assertEqual(colors, [0, 1])
 
@@ -323,7 +325,7 @@ class PlannerColoringTestCase(TestCase):
                                                           </graph>
                                                         </graphml>
                                                         """
-        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False)
+        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         sn.original_network.nodes['c']['norm_x'] = 0
         sn.original_network.nodes['c']['norm_y'] = 0
@@ -345,16 +347,16 @@ class PlannerColoringTestCase(TestCase):
 
 
         layers = [
-            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, GDP(0, 10000))),
-            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, GDP(0, 10000))),
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
         ]
-        rp = RoutePlanner(layers=layers)
+        rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         flightplans_to_color = rp._prepare_flightplans_to_color([
-            Request((-1, 0), (1, 0), 0, 10, 0, 20, GDP(0, 1000)),
-            Request((0, -1), (0, 1), 0, 10, 0, 20, GDP(0, 1000)),
-            Request((-2, 0), (-1, 0), 0, 10, 0, 20, GDP(0, 1000)),
-            Request((-2, 0), (1, 0), 0, 10, 0, 20, GDP(0, 1000)),
+            Request((-1, 0), (1, 0), 0, 10, 0, 20, NO_GDP),
+            Request((0, -1), (0, 1), 0, 10, 0, 20, NO_GDP),
+            Request((-2, 0), (-1, 0), 0, 10, 0, 20, NO_GDP),
+            Request((-2, 0), (1, 0), 0, 10, 0, 20, NO_GDP),
         ])
 
         self.assertTrue(rp._initial_intersection_check(flightplans_to_color[0], flightplans_to_color[1]))
@@ -412,7 +414,7 @@ class PlannerColoringTestCase(TestCase):
                                                           </graph>
                                                         </graphml>
                                                         """
-        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False)
+        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         sn.original_network.nodes['c']['norm_x'] = 0
         sn.original_network.nodes['c']['norm_y'] = 0
@@ -433,17 +435,17 @@ class PlannerColoringTestCase(TestCase):
         sn.original_network.nodes['ll']['norm_y'] = 0
 
         layers = [
-            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, GDP(0, 10000))),
-            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, GDP(0, 10000))),
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
         ]
-        rp = RoutePlanner(layers=layers)
+        rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         flightplans_to_color = rp._prepare_flightplans_to_color([
-            Request((-1, 0), (1, 0), 0, 10, 0, 10, GDP(0, 1000)),
-            Request((0, -1), (0, 1), 0, 10, 0, 10, GDP(0, 1000)),
-            Request((-2, 0), (-1, 0), 0, 10, 0, 10, GDP(0, 1000)),
-            Request((-2, 0), (1, 0), 0, 10, 0, 10, GDP(0, 1000)),
-            Request((-2, 0), (1, 0), 0, 10, -4, 10, GDP(0, 1000)),
+            Request((-1, 0), (1, 0), 0, 10, 0, 10, NO_GDP),
+            Request((0, -1), (0, 1), 0, 10, 0, 10, NO_GDP),
+            Request((-2, 0), (-1, 0), 0, 10, 0, 10, NO_GDP),
+            Request((-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP),
+            Request((-2, 0), (1, 0), 0, 10, -4, 10, NO_GDP),
         ])
 
         self.assertTrue(rp._find_intersection_by_simulation(flightplans_to_color[0], flightplans_to_color[1], rp._intersection_in_time(flightplans_to_color[0], flightplans_to_color[1])))
@@ -502,7 +504,7 @@ class PlannerColoringTestCase(TestCase):
                                                           </graph>
                                                         </graphml>
                                                         """
-        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False)
+        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         sn.original_network.nodes['c']['norm_x'] = 0
         sn.original_network.nodes['c']['norm_y'] = 0
@@ -523,15 +525,15 @@ class PlannerColoringTestCase(TestCase):
         sn.original_network.nodes['ll']['norm_y'] = 0
 
         layers = [
-            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, GDP(0, 10000))),
-            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, GDP(0, 10000))),
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
         ]
-        rp = RoutePlanner(layers=layers)
+        rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         flightplans_to_color = rp._prepare_flightplans_to_color([
-            Request((0, -1), (0, 1), 10, 10, 0, 10, GDP(0, 1000)),
-            Request((-2, 0), (1, 0), 0, 10, 0, 10, GDP(0, 1000)),
-            Request((0, -1), (0, 1), 1, 10, 0, 10, GDP(0, 1000)),
+            Request((0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),
+            Request((-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP),
+            Request((0, -1), (0, 1), 1, 10, 0, 10, NO_GDP),
         ])
 
         self.assertTrue(rp._find_intersection_by_simulation(flightplans_to_color[0], flightplans_to_color[1], rp._intersection_in_time(flightplans_to_color[0], flightplans_to_color[1])))
@@ -588,7 +590,7 @@ class PlannerColoringTestCase(TestCase):
                                                           </graph>
                                                         </graphml>
                                                         """
-        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False)
+        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         sn.original_network.nodes['c']['norm_x'] = 0
         sn.original_network.nodes['c']['norm_y'] = 0
@@ -609,31 +611,202 @@ class PlannerColoringTestCase(TestCase):
         sn.original_network.nodes['ll']['norm_y'] = 0
 
         layers = [
-            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, GDP(0, 10000))),
-            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, GDP(0, 10000))),
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
         ]
-        rp = RoutePlanner(layers=layers)
-        requests = [Request((0, -1), (0, 1), 10, 10, 0, 10, GDP(0, 1000)),
-                    Request((-2, 0), (1, 0), 0, 10, 0, 10, GDP(0, 1000)),]
-        res, flightplans = rp._attempt_coloring(requests)
-
-        self.assertIn(res, [[0, 1], [1, 0]])
+        rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
+        requests = [Request((0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),
+                    Request((-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP),]
+        # res, flightplans = rp._attempt_coloring(requests)
+        #
+        # self.assertIn(res, [[0, 1], [1, 0]])
 
         requests = [
-            Request((-2, 0), (1, 0), 0, 10, 0, 10, GDP(0, 1000)),
-            Request((0, -1), (0, 1), 1, 10, 0, 10, GDP(0, 1000)),
+            Request((-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP),
+            Request((0, -1), (0, 1), 1, 10, 0, 10, NO_GDP),
         ]
         res, flightplans = rp._attempt_coloring(requests)
 
         self.assertIn(res, [[0, 0], [1, 1]]) # making sure that we are using as few layers as possible
 
         layers = [
-            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, GDP(0, 10000))),
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
         ]
-        rp = RoutePlanner(layers=layers)
 
-        requests = [Request((0, -1), (0, 1), 10, 10, 0, 10, GDP(0, 1000)),
-                    Request((-2, 0), (1, 0), 0, 10, 0, 10, GDP(0, 1000)), ]
+        rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
+
+        requests = [Request((0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),
+                    Request((-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP), ]
         res, flightplans = rp._attempt_coloring(requests)
 
         self.assertIsNone(res)
+
+    def test_turn_cost(self):
+        graphml_string = """<?xml version='1.0' encoding='utf-8'?>
+                                                                <graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+                                                                  <key id="d12" for="edge" attr.name="length" attr.type="string" />
+                                                                  <key id="d2" for="node" attr.name="x" attr.type="string" />
+                                                                  <key id="d1" for="node" attr.name="y" attr.type="string" />
+                                                                  <graph edgedefault="undirected">
+                                                                    <node id="l">
+                                                                      <data key="d1">0</data>
+                                                                      <data key="d2">-1</data>
+                                                                    </node>
+                                                                    <node id="ll">
+                                                                      <data key="d1">0</data>
+                                                                      <data key="d2">-2</data>
+                                                                    </node>
+                                                                    <node id="r">
+                                                                      <data key="d1">0</data>
+                                                                      <data key="d2">1</data>
+                                                                    </node>
+                                                                    <node id="c">
+                                                                      <data key="d1">0</data>
+                                                                      <data key="d2">0</data>
+                                                                    </node>
+                                                                    <node id="t">
+                                                                      <data key="d1">1</data>
+                                                                      <data key="d2">0</data>
+                                                                    </node>
+                                                                    <node id="b">
+                                                                      <data key="d1">-1</data>
+                                                                      <data key="d2">0</data>
+                                                                    </node>
+
+
+                                                                    <edge source="ll" target="l" id="0">
+                                                                      <data key="d12">40</data>
+                                                                    </edge>
+                                                                    <edge source="l" target="c" id="1">
+                                                                      <data key="d12">40</data>
+                                                                    </edge>
+                                                                    <edge source="r" target="c" id="2">
+                                                                      <data key="d12">40</data>
+                                                                    </edge>
+                                                                    <edge source="t" target="c" id="3">
+                                                                      <data key="d12">40</data>
+                                                                    </edge>
+                                                                    <edge source="b" target="c" id="4">
+                                                                      <data key="d12">40</data>
+                                                                    </edge>
+                                                                  </graph>
+                                                                </graphml>
+                                                                """
+        turn_params_table = TurnParamsTable([TurnParams(0, 30, 30, 0), TurnParams(30, 180, 10, 7)])
+
+        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False,
+                                               turn_params_table=turn_params_table)
+
+        sn.original_network.nodes['c']['norm_x'] = 0
+        sn.original_network.nodes['c']['norm_y'] = 0
+
+        sn.original_network.nodes['l']['norm_x'] = -40
+        sn.original_network.nodes['l']['norm_y'] = 0
+
+        sn.original_network.nodes['r']['norm_x'] = 40
+        sn.original_network.nodes['r']['norm_y'] = 0
+
+        sn.original_network.nodes['t']['norm_x'] = 0
+        sn.original_network.nodes['t']['norm_y'] = 40
+
+        sn.original_network.nodes['b']['norm_x'] = 0
+        sn.original_network.nodes['b']['norm_y'] = -40
+
+        sn.original_network.nodes['ll']['norm_x'] = -80
+        sn.original_network.nodes['ll']['norm_y'] = 0
+
+        layers = [
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+        ]
+        rp = RoutePlanner(layers=layers, turn_params_table=turn_params_table)
+
+        flightplans_to_color = rp._prepare_flightplans_to_color([
+            Request((-1, 0), (0, -1), 0, 10, 0, 10, NO_GDP),
+            Request((1, 0), (-1, 0), 0, 10, 0, 10, NO_GDP),
+            Request((1, 0), (-1, 0), 0, 10, 3, 10, NO_GDP),
+            Request((1, 0), (-1, 0), 0, 10, 10, 10, NO_GDP),
+        ])
+
+        self.assertTrue(rp._find_intersection_by_simulation(flightplans_to_color[0], flightplans_to_color[1],
+                                                            rp._intersection_in_time(flightplans_to_color[0],
+                                                                                     flightplans_to_color[1])))
+
+        self.assertTrue(rp._find_intersection_by_simulation(flightplans_to_color[0], flightplans_to_color[2],
+                                                            rp._intersection_in_time(flightplans_to_color[0],
+                                                                                     flightplans_to_color[2])))
+
+        self.assertFalse(rp._find_intersection_by_simulation(flightplans_to_color[0], flightplans_to_color[3],
+                                                            rp._intersection_in_time(flightplans_to_color[0],
+                                                                                     flightplans_to_color[3])))
+
+    def test_converting_sn_flightplan_with_delay(self):
+        graphml_string = """<?xml version='1.0' encoding='utf-8'?>
+                                                                        <graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+                                                                          <key id="d12" for="edge" attr.name="length" attr.type="string" />
+                                                                          <key id="d2" for="node" attr.name="x" attr.type="string" />
+                                                                          <key id="d1" for="node" attr.name="y" attr.type="string" />
+                                                                          <graph edgedefault="undirected">
+                                                                            <node id="l">
+                                                                              <data key="d1">0</data>
+                                                                              <data key="d2">-1</data>
+                                                                            </node>
+                                                                            <node id="ll">
+                                                                              <data key="d1">0</data>
+                                                                              <data key="d2">-2</data>
+                                                                            </node>
+                                                                            <node id="r">
+                                                                              <data key="d1">0</data>
+                                                                              <data key="d2">1</data>
+                                                                            </node>
+                                                                            <node id="c">
+                                                                              <data key="d1">0</data>
+                                                                              <data key="d2">0</data>
+                                                                            </node>
+                                                                            <node id="t">
+                                                                              <data key="d1">1</data>
+                                                                              <data key="d2">0</data>
+                                                                            </node>
+                                                                            <node id="b">
+                                                                              <data key="d1">-1</data>
+                                                                              <data key="d2">0</data>
+                                                                            </node>
+
+
+                                                                            <edge source="ll" target="l" id="0">
+                                                                              <data key="d12">40</data>
+                                                                            </edge>
+                                                                            <edge source="l" target="c" id="1">
+                                                                              <data key="d12">40</data>
+                                                                            </edge>
+                                                                            <edge source="r" target="c" id="2">
+                                                                              <data key="d12">40</data>
+                                                                            </edge>
+                                                                            <edge source="t" target="c" id="3">
+                                                                              <data key="d12">40</data>
+                                                                            </edge>
+                                                                            <edge source="b" target="c" id="4">
+                                                                              <data key="d12">40</data>
+                                                                            </edge>
+                                                                          </graph>
+                                                                        </graphml>
+                                                                        """
+        turn_params_table = TurnParamsTable([TurnParams(0, 180, 30, 0)])
+
+        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False,
+                                               turn_params_table=turn_params_table)
+
+        sn_flightplan = SNFlightplan([(0, 'll'), (1, 'll'), (2, 'l'), (3, 'c'), (4, 'r')], 1, 0, 0, SNRequest('ll', 'r', 0, 0, 50, 0))
+        pp = PathPlanner(sn, 1, 50, None)
+
+        fp = Flightplan.from_sn_flightplan(pp.get_time_cost_enhanced_network(50), sn_flightplan)
+        self.assertEqual(fp.waypoints[0].time, 1)
+        self.assertEqual(fp.waypoints[3].time, 4)
+
+        sn_flightplan = SNFlightplan([(0, 'll'), (1, 'l'), (2, 'c'), (3, 'r')], 1, 0, 0,
+                                     SNRequest('ll', 'r', 0, 0, 50, 0))
+        pp = PathPlanner(sn, 1, 50, None)
+
+        fp = Flightplan.from_sn_flightplan(pp.get_time_cost_enhanced_network(50), sn_flightplan)
+        self.assertEqual(fp.waypoints[0].time, 0)
+        self.assertEqual(fp.waypoints[3].time, 3)

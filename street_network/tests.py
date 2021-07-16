@@ -51,6 +51,7 @@ class StreetNetworkTestCase(TestCase):
 
         self.assertEqual(time_ext_network['378699']['378699_33144414_0']['length'], 10)
         self.assertEqual(time_ext_network['378699_33144414_0']['378699']['length'], 10)
+        self.assertEqual(time_ext_network['378699_33144414_0']['378699_33144414_1']['length'], 10)
         self.assertEqual(time_ext_network['378699_33144414_1']['33144414']['length'], 5)
         self.assertEqual(time_ext_network['33144414']['378699_33144414_1']['length'], 5)
 
@@ -260,6 +261,9 @@ class StreetNetworkTestCase(TestCase):
             (sn.original_network.nodes['33144414']['y'], sn.original_network.nodes['33144414']['x']),
         ).m)
         self.assertAlmostEqual(math.sqrt(x_diff**2 + y_diff**2), 130.102, delta=0.1)
+
+    def test_geometry(self):
+        pass
 
 
 class StreetNetworkTurnCostTestCase(TestCase):
@@ -1149,6 +1153,5 @@ class ShortestPathWithTurnNodesTestCase(TestCase):
         fps = pp.resolve_requests([request1, request2])
         self.assertEqual(15, fps[0].end_time)
         self.assertEqual(26, fps[1].end_time)
-
 
 

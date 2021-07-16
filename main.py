@@ -1,4 +1,6 @@
+import csv
 import math
+from typing import Tuple
 
 import numpy as np
 import simplejson
@@ -81,29 +83,71 @@ from street_network.path_planner import StreetNetwork, PathPlanner
 #             simplejson.dump(data, wf)
 
 
+
+def read_M2_flight_intents_file(filename):
+    def parse_M2_time(time: str) -> int:
+        h, m, s = time.split(':')
+        return int(h) * 3600 + int(m) * 60 + int(s)
+
+    def parse_M2_tuple(tuple: str) -> Tuple[float, float]:
+        c1, c2 = tuple.replace('(', '').replace(')', '').split(',')
+        return float(c2), float(c1)
+
+    with open(filename, 'r') as f:
+        res = list(csv.reader(f, delimiter='\t'))
+
+        intents = []
+
+        for line in res:
+            intents.append({
+                'intent_arrival_time': parse_M2_time(line[0]),
+                'id': line[1],
+                'model': line[2],
+                'time_start': parse_M2_time(line[3]),
+                'origin': parse_M2_tuple(line[4]),
+                'destination': parse_M2_tuple(line[5]),
+                'priority': line[6]
+            })
+
+        return intents
+
+
 def run_street_network_vienn():
+    intents = read_M2_flight_intents_file('../Test_Scenario/M2_Test_FlightPlan.txt')
+
     drone_acceleration_m_s2 = 3.5
     turn_costs = TurnParamsTable([
-        TurnParams(0, 30, 0, 0),
-        TurnParams(30, 180, 10, math.ceil(2*(20/drone_acceleration_m_s2))),
+        TurnParams(0, 30, 30, 0),
+        TurnParams(30, 180, 10, 4)
     ])
+    spd = 14
 
     sn = StreetNetwork.from_graphml_file('../Test_Scenario/Test_Scenario/data/street_data/graph_files/processed_graphM2.graphml', turn_costs)
 
-    fr = (16.3285369, 48.2210692)
-    to = (16.3424207, 48.2172288)
+    requests = []
 
-    request = Request(fr, to, 0, 15, 0, 10, GDP(0, 1000))
+    interesting_intents = [1, ]
+    # interesting_intents = range(2)
+    # interesting_intents = range(len(intents))
+    gdp = GDP(5, 60, 1)
+
+    for intent in [intents[x] for x in interesting_intents]:
+        # fr = (16.3285369, 48.2210692)
+        # to = (16.3424207, 48.2172288)
+
+        request = Request(intent['origin'], intent['destination'], 15, spd, intent['time_start'], 60, gdp)
+        requests.append(request)
 
     layers = [
-        Layer(50, Layer.Type.NETWORK, PathPlanner(sn, 1, 15, GDP(0, 1000)))
+        Layer(0, Layer.Type.NETWORK, PathPlanner(sn, 1, spd, gdp)),
+        Layer(50, Layer.Type.NETWORK, PathPlanner(sn, 1, spd, gdp)),
     ]
 
     rp = RoutePlanner(layers, turn_costs)
-    res = rp.resolve_requests([request, ])
+    res = rp.resolve_requests(requests, skip_coloring=True)
 
     with open('new_scenario.scn', 'w') as f:
-        f.write(res[0])
+        f.write(''.join(res))
 
 
 if __name__ == '__main__':
