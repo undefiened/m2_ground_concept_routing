@@ -251,7 +251,7 @@ class RoutePlanner:
 
         if not skip_coloring and layers:
             print('COLORING WAS SUCCESSFUL, THE SOLUTION IS OPTIMAL')
-            return self.convert_flightplans_to_M2_scenarios([x.flightplan for x in flightplans], layers)
+            return flightplans, layers
         else:
             print('COLORING FAILED, USING TIME-EXPANDED NETWORK')
             layers = []
@@ -276,7 +276,7 @@ class RoutePlanner:
                     layers.append(best_flightplan_layer)
                     te_flightplans.append(Flightplan.from_sn_flightplan(self.layers[best_flightplan_layer].path_planner.get_time_cost_enhanced_network(flightplan.sn_request.speed_m_s), best_flightplan))
 
-            return self.convert_flightplans_to_M2_scenarios(te_flightplans, layers)
+            return te_flightplans, layers
 
     def convert_flightplans_to_M2_scenarios(self, flightplans: List[Flightplan], layers: List[int]) -> List[str]:
         scenarios = []
@@ -287,6 +287,7 @@ class RoutePlanner:
         header += "00:00:00>ZOOM 50\n"
         header += "00:00:00>VIS MAP TILEDMAP\n"
         header += "00:00:00>ZONER 0.0161987\n"
+        header += "00:00:00>ZONEDH 1\n"
 
         scenarios.append(header)
         for i in range(len(flightplans)):
@@ -335,6 +336,14 @@ class RoutePlanner:
 
         waypoints = [x for i, x in enumerate(flightplan.waypoints) if i not in waypoints_to_remove]
 
+        waypoints_to_remove = []
+
+        for i in range(len(waypoints) - 1):
+            if abs(waypoints[i].x - waypoints[i+1].x) < 0.00001 and abs(waypoints[i].y - waypoints[i+1].y) < 0.00001:
+                waypoints_to_remove.append(i)
+
+        waypoints = [x for i, x in enumerate(waypoints) if i not in waypoints_to_remove]
+
         spd = 30
         initial_heading, _, _ = geodesic.inv(source.x, source.y, waypoints[1].x, waypoints[1].y)
 
@@ -363,7 +372,7 @@ class RoutePlanner:
                 heading2, _, _ = geodesic.inv(waypoints[i].x, waypoints[i].y, waypoints[i+1].x,
                                                      waypoints[i+1].y)
 
-                if self.turn_params_table.is_turn_penalized(abs(heading1 - heading2)) and (not waypoints[i-1].turning or not waypoints[i].turning or waypoints[i+1].turning):
+                if self.turn_params_table.is_turn_penalized(abs(heading1 - heading2)) and (waypoints[i-1].turning or waypoints[i].turning or waypoints[i+1].turning):
                     if not last_was_turn:
                         scenario += "{time}>ADDWPT D{id} FLYTURN\n".format(id=id, time=time)
                         scenario += "{time}>ADDWPT D{id} TURNSPEED {turn_speed}\n".format(id=id, turn_speed=self.turn_params_table.get_turn_speed_knots(abs(heading1 - heading2)), time=time)
@@ -378,13 +387,20 @@ class RoutePlanner:
                 last_was_turn = False
                 scenario += "{time}>ADDWPT D{id} FLYBY\n".format(id=id, time=time)
 
-            scenario += "{time}>ADDWPT D{id} D{id}_{i} {alt} ,\n".format(id=id, i=i, lat=waypoint.y,
-                                                                                 lon=waypoint.x,
-                                                                                 alt=self.layers[
-                                                                                         layer].altitude_m * 3.281,
-                                                                                 spd=spd, time=time)
+            if last_was_turn:
+                scenario += "{time}>ADDWPT D{id} D{id}_{i} {alt} {spd}\n".format(id=id, i=i, lat=waypoint.y,
+                                                                             lon=waypoint.x,
+                                                                             alt=self.layers[
+                                                                                     layer].altitude_m * 3.281,
+                                                                             spd=spd, time=time)
+            else:
+                scenario += "{time}>ADDWPT D{id} D{id}_{i} {alt} ,\n".format(id=id, i=i, lat=waypoint.y,
+                                                                                     lon=waypoint.x,
+                                                                                     alt=self.layers[
+                                                                                             layer].altitude_m * 3.281,
+                                                                                     spd=spd, time=time)
 
-            if not last_was_turn and waypoints[i].turning:
+            if not last_was_turn:
                 scenario += "{time}>RTA D{id} D{id}_{i} {time2}\n".format(id=id, i=i, time=time, time2=str(datetime.timedelta(seconds=waypoint.time)))
 
         scenario += "{time}>D{id} ATDIST {lat} {lon} 0.01 DEL D{id}\n".format(id=id, lat=waypoints[-1].y, lon=waypoints[-1].x, time=time)
