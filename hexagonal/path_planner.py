@@ -235,6 +235,8 @@ class HexMap:
         self.width = width
         self.height = height
 
+        raise NotImplementedError()
+
     def int_time(self, node_id: int) -> int:
         time = math.floor(node_id / self.number_of_nodes)
 
@@ -399,6 +401,8 @@ class CityMap:
         if self.pixel_size_m > 4*self.hex_radius_m:
             raise NotImplementedError("This implementation does not support the case where hexagons are smaller than pixels. Hexagons should have radius at least 4 times pixel size")
 
+        raise NotImplementedError
+
     @property
     def hex_radius_in_px(self) -> float:
         return self.hex_radius_m/self.pixel_size_m
@@ -474,6 +478,8 @@ class PathPlanner:
         self.gdp = gdp
         self.punish_deviation = punish_deviation
         self.city_map = city_map
+
+        raise NotImplementedError
 
     @property
     def map(self) -> HexMap:
