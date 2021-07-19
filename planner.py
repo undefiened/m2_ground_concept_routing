@@ -31,7 +31,7 @@ class Layer:
     @unique
     class Type(Enum):
         NETWORK = 0
-        HEXAGONAL = 1
+        # HEXAGONAL = 1
 
     altitude_m: float
     type: Type
