@@ -4,7 +4,7 @@ from unittest import TestCase
 import networkx as nx
 from geopy import distance
 
-from common import GDP, PathNotFoundException, TurnParamsTable, TurnParams
+from common import GDP, PathNotFoundException, TurnParamsTable, TurnParams, NO_GDP, DiskGeofence
 from path_planner import StreetNetwork, PathPlanner, SNRequest, SNFlightplan
 
 
@@ -471,7 +471,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                 </graphml>
                 """
         sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
-        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=0, penalty=1000))
+        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=NO_GDP)
 
         flightplans = pp.resolve_requests([SNRequest('1', '4', 0, 1, 10, 0)])
         self.assertEqual(len(flightplans), 1)
@@ -516,9 +516,9 @@ class ShortestPathInNetworkTestCase(TestCase):
                         </graphml>
                         """
         sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
-        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=0, penalty=1000))
+        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=NO_GDP)
 
-        self.assertRaises(PathNotFoundException, pp.resolve_requests, [SNRequest('1', '4', 0, 1, 10, 0)])
+        self.assertRaises(PathNotFoundException, pp.resolve_request, SNRequest('1', '4', 0, 1, 10, 0))
 
     def test_towards_each_other(self):
         graphml_string = """<?xml version='1.0' encoding='utf-8'?>
@@ -559,7 +559,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                                 </graphml>
                                 """
         sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
-        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=0, penalty=1000))
+        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=NO_GDP)
 
         pp.resolve_requests([SNRequest('1', '4', 0, 1, 10, 0), SNRequest('4', '1', 0, 1, 10, 0)])
 
@@ -607,7 +607,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                                 </graphml>
                                 """
         sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
-        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=4, penalty=0.5))
+        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=4, penalty=0.5, time_step=1))
 
         pp.resolve_requests([SNRequest('1', '4', 0, 1, 10, 0), SNRequest('4', '1', 0, 1, 10, 0)])
 
@@ -645,7 +645,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                                         </graphml>
                                         """
         sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
-        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=10, penalty=1000))
+        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=10, penalty=1000, time_step=1))
 
         pp.resolve_requests([SNRequest('1', '4', 0, 1, 10, 0), SNRequest('4', '1', 0, 1, 10, 0)])
 
@@ -692,7 +692,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                                                 </graphml>
                                                 """
         sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
-        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=30, penalty=1))
+        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=30, penalty=1, time_step=1))
 
         pp.add_flightplan(SNFlightplan(nodes=[(0, '1'), (1, '3'), (2, '4')], speed_node=1, time_uncertainty=5, radius_m=1, request=None))
         request = SNRequest('1', '4', 1, 1, 10, 0)
@@ -751,7 +751,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                                                 </graphml>
                                                 """
         sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
-        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=30, penalty=1))
+        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=30, penalty=1, time_step=1))
 
         pp.add_flightplan(SNFlightplan(nodes=[(1, 'l'), (2, 'c'), (3, 'r')], speed_node=1, time_uncertainty=0, radius_m=1, request=None))
         request = SNRequest('t', 'b', 0, 1, 10, 5)
@@ -810,7 +810,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                                                 </graphml>
                                                 """
         sn = StreetNetwork.from_graphml_string(graphml_string, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
-        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=30, penalty=1))
+        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=30, penalty=1, time_step=1))
 
         pp.add_flightplan(SNFlightplan(nodes=[(1, 'l'), (2, 'c'), (3, 'r')], speed_node=1, time_uncertainty=5, radius_m=1, request=None))
         request = SNRequest('t', 'b', 0, 1, 10, 5)
@@ -860,14 +860,14 @@ class ShortestPathInNetworkTestCase(TestCase):
                                         </graphml>
                                         """
         sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=True, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
-        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=1000, default_gdp=GDP(max_time=0, penalty=1000))
+        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=1000, default_gdp=NO_GDP)
         pp.add_flightplan(SNFlightplan(nodes=[(0, '1'), (1, '2'), (2, '3')], speed_node=1, time_uncertainty=0, radius_m=50, request=None))
         self.assertEqual(pp._list_of_occupied_nodes_for_request(0, SNRequest('1', '3', 0, 50, 10, 0)), {'1'})
         self.assertEqual(pp._list_of_occupied_nodes_for_request(0, SNRequest('1', '3', 0, 85, 10, 0)), {'1', '2'})
         self.assertEqual(pp._list_of_occupied_nodes_for_request(1, SNRequest('1', '3', 0, 700, 10, 0)), {'1', '2'})
         self.assertEqual(pp._list_of_occupied_nodes_for_request(1, SNRequest('1', '3', 0, 900, 10, 0)), {'1', '2', '3'})
 
-        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=0, penalty=1000))
+        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=NO_GDP)
         pp.add_flightplan(
             SNFlightplan(nodes=[(0, '1'), (1, '2'), (2, '3')], speed_node=1, time_uncertainty=0, radius_m=50, request=None))
         self.assertEqual(pp._list_of_occupied_nodes_for_request(0, SNRequest('1', '3', 0, 50, 10, 0)), {'1',
@@ -876,7 +876,7 @@ class ShortestPathInNetworkTestCase(TestCase):
                                                                                                       '1_2_6', '1_2_7', '1_2_8',
                                                                                                         })
 
-        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=50, default_gdp=GDP(max_time=0, penalty=1000))
+        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=50, default_gdp=NO_GDP)
         pp.add_flightplan(
             SNFlightplan(nodes=[(0, '1'), (1, '2'), (2, '3')], speed_node=1, time_uncertainty=0, radius_m=50, request=None))
         self.assertEqual(pp._list_of_occupied_nodes_for_request(0, SNRequest('1', '3', 0, 250, 10, 0)), {'1_2_0', '2_3_2', '2', '2_3_0', '2_3_1', '1_2_1', '1'})
@@ -958,7 +958,7 @@ class ShortestPathWithTurnNodesTestCase(TestCase):
         sn.original_network.nodes['ll']['norm_x'] = -80
         sn.original_network.nodes['ll']['norm_y'] = 0
 
-        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=30, penalty=1))
+        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=30, penalty=1, time_step=1))
 
         # pp.add_flightplan(
         #     SNFlightplan(nodes=[(1, 'l'), (2, 'c'), (3, 'r')], speed_node=1, time_uncertainty=5, radius_m=1,
@@ -1049,7 +1049,7 @@ class ShortestPathWithTurnNodesTestCase(TestCase):
         sn.original_network.nodes['ll']['norm_x'] = -80
         sn.original_network.nodes['ll']['norm_y'] = 0
 
-        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=30, penalty=1))
+        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=30, penalty=1, time_step=1))
 
         # pp.add_flightplan(
         #     SNFlightplan(nodes=[(1, 'l'), (2, 'c'), (3, 'r')], speed_node=1, time_uncertainty=5, radius_m=1,
@@ -1142,7 +1142,7 @@ class ShortestPathWithTurnNodesTestCase(TestCase):
         sn.original_network.nodes['ll']['norm_x'] = -80
         sn.original_network.nodes['ll']['norm_y'] = 0
 
-        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=30, penalty=1))
+        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=GDP(max_time=30, penalty=1, time_step=1))
 
         # pp.add_flightplan(
         #     SNFlightplan(nodes=[(1, 'l'), (2, 'c'), (3, 'r')], speed_node=1, time_uncertainty=5, radius_m=1,
@@ -1155,3 +1155,102 @@ class ShortestPathWithTurnNodesTestCase(TestCase):
         self.assertEqual(26, fps[1].end_time)
 
 
+class GeofencesTestCase(TestCase):
+    def test_circle(self):
+        graphml_string = """<?xml version='1.0' encoding='utf-8'?>
+                    <graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+                      <key id="d12" for="edge" attr.name="length" attr.type="string" />
+                      <key id="d2" for="node" attr.name="x" attr.type="string" />
+                      <key id="d1" for="node" attr.name="y" attr.type="string" />
+                      <graph edgedefault="undirected">
+                        <node id="l">
+                          <data key="d1">0</data>
+                          <data key="d2">-1</data>
+                        </node>
+                        <node id="ll">
+                          <data key="d1">0</data>
+                          <data key="d2">-2</data>
+                        </node>
+                        <node id="r">
+                          <data key="d1">0</data>
+                          <data key="d2">1</data>
+                        </node>
+                        <node id="c">
+                          <data key="d1">0</data>
+                          <data key="d2">0</data>
+                        </node>
+                        <node id="t">
+                          <data key="d1">1</data>
+                          <data key="d2">0</data>
+                        </node>
+                        <node id="b">
+                          <data key="d1">-1</data>
+                          <data key="d2">0</data>
+                        </node>
+
+
+                        <edge source="ll" target="l" id="0">
+                          <data key="d12">40</data>
+                        </edge>
+                        <edge source="l" target="c" id="1">
+                          <data key="d12">40</data>
+                        </edge>
+                        <edge source="r" target="c" id="2">
+                          <data key="d12">40</data>
+                        </edge>
+                        <edge source="t" target="c" id="3">
+                          <data key="d12">40</data>
+                        </edge>
+                        <edge source="b" target="c" id="4">
+                          <data key="d12">40</data>
+                        </edge>
+                      </graph>
+                    </graphml>
+                    """
+        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False,
+                                               turn_params_table=TurnParamsTable([
+                                                   TurnParams(0, 30, 30, 0),
+                                                   TurnParams(30, 180, 10, 7),
+                                               ]))
+
+        sn.original_network.nodes['c']['norm_x'] = 0
+        sn.original_network.nodes['c']['norm_y'] = 0
+
+        sn.original_network.nodes['l']['norm_x'] = -40
+        sn.original_network.nodes['l']['norm_y'] = 0
+
+        sn.original_network.nodes['r']['norm_x'] = 40
+        sn.original_network.nodes['r']['norm_y'] = 0
+
+        sn.original_network.nodes['t']['norm_x'] = 0
+        sn.original_network.nodes['t']['norm_y'] = 40
+
+        sn.original_network.nodes['b']['norm_x'] = 0
+        sn.original_network.nodes['b']['norm_y'] = -40
+
+        sn.original_network.nodes['ll']['norm_x'] = -80
+        sn.original_network.nodes['ll']['norm_y'] = 0
+
+        pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=40,
+                         default_gdp=NO_GDP, geofences=[DiskGeofence((1, 4), 10, (0, 0)), DiskGeofence((10, 14), 10, (-35, 0))])
+
+        res = pp._list_of_occupied_nodes_for_request(0, SNRequest('', '', 0, 0, 0, 0))
+        self.assertEqual(len(res), 0)
+
+        res = pp._list_of_occupied_nodes_for_request(1, SNRequest('', '', 0, 0, 0, 0))
+        self.assertEqual(len(res), 4)
+
+        res = pp._list_of_occupied_nodes_for_request(2, SNRequest('', '', 0, 0, 0, 0))
+        self.assertEqual(len(res), 4)
+
+        res = pp._list_of_occupied_nodes_for_request(3, SNRequest('', '', 0, 0, 0, 0))
+        self.assertEqual(len(res), 4)
+
+        res = pp._list_of_occupied_nodes_for_request(4, SNRequest('', '', 0, 0, 0, 0))
+        self.assertEqual(len(res), 4)
+
+        res = pp._list_of_occupied_nodes_for_request(5, SNRequest('', '', 0, 0, 0, 0))
+        self.assertEqual(len(res), 0)
+
+        res = pp._list_of_occupied_nodes_for_request(10, SNRequest('', '', 0, 0, 0, 0))
+        self.assertEqual(len(res), 1)

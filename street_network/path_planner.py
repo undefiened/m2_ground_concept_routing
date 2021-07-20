@@ -11,7 +11,7 @@ from geopy import distance
 import networkx as nx
 from networkx import DiGraph
 
-from common import PathNotFoundException, GDP, Request, TurnParamsTable
+from common import PathNotFoundException, GDP, Request, TurnParamsTable, Geofence
 
 
 def plot_three_points(n1, n2, n3):
@@ -342,14 +342,16 @@ class PathPlanner:
     timestep_s: int
     network: nx.DiGraph
     edge_length_m: float
+    geofences: List[Geofence]
 
-    def __init__(self, street_network: StreetNetwork, timestep_s: int, edge_length_m: float, default_gdp: GDP):
+    def __init__(self, street_network: StreetNetwork, timestep_s: int, edge_length_m: float, default_gdp: GDP, geofences: List[Geofence] = []):
         self.street_network = street_network
         self.default_gdp = default_gdp
         self.permanent_flightplans = []
         self.temporary_flightplans = []
         self.timestep_s = timestep_s
         self.edge_length_m = edge_length_m
+        self.geofences = geofences
 
         self.network = self.street_network.get_subdivided_network(edge_length_m)
 
@@ -377,6 +379,17 @@ class PathPlanner:
                         position = (position_node['norm_x'], position_node['norm_y'])
                         nodes_covered_by_flightplan = [node for node, data in self.network.nodes(data=True) if abs(position[0] - data['norm_x']) < radius and abs(position[1] - data['norm_y']) < radius and squared_distance(position, (data['norm_x'], data['norm_y'])) < radius**2]
                         occupied_nodes.update(nodes_covered_by_flightplan)
+
+        nodes_covered_by_geofences = []
+        current_geofences = [x for x in self.geofences if x.exists_at_time(time)]
+        if len(current_geofences) > 0:
+            for node, data in self.network.nodes(data=True):
+                for geofence in current_geofences:
+                    if geofence.contains_point((data['norm_x'], data['norm_y']), request.uncertainty_radius_m):
+                        nodes_covered_by_geofences.append(node)
+                        break
+
+        occupied_nodes.update(nodes_covered_by_geofences)
 
         return occupied_nodes
 

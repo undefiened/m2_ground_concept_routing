@@ -1,10 +1,8 @@
 from unittest import TestCase
 
-from common import Flightplan, GDP, Request, TurnParamsTable, TurnParams
+from common import Flightplan, Request, TurnParamsTable, TurnParams, NO_GDP
 from planner import RoutePlanner, Layer
 from street_network.path_planner import PathPlanner, StreetNetwork, SNRequest, SNFlightplan
-
-NO_GDP = GDP(1, 0, 10000)
 
 
 class PlannerColoringTestCase(TestCase):

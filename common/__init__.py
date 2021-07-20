@@ -1,4 +1,6 @@
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from typing import Tuple, List, TYPE_CHECKING
 
 import networkx as nx
@@ -16,6 +18,8 @@ class GDP:
     max_time: int
     penalty: float
 
+
+NO_GDP = GDP(1, 0, 1000)
 
 @dataclass
 class Request:
@@ -94,7 +98,7 @@ class Flightplan:
         norm_x: float
         norm_y: float
         time: int
-        turning: bool
+        turning: bool = False
 
     waypoints: List[Waypoint]
     departure_time: int
@@ -215,7 +219,7 @@ class Flightplan:
                          graph.nodes[path[path_keys[ground_delay]]]['norm_y'], previous_node_finish_time, True))
 
 
-        for i in range(ground_delay+1, len(path) - 1):
+        for i in range(ground_delay, len(path) - 1):
             if graph.has_edge(path[path_keys[i]], path[path_keys[i + 1]]):
                 time = graph.edges[path[path_keys[i]], path[path_keys[i + 1]]]['time_cost']
             else:
@@ -230,3 +234,27 @@ class Flightplan:
             previous_node_finish_time = previous_node_finish_time + time
 
         return cls(waypoints, sn_flightplan.request.time_uncertainty_s, sn_flightplan.request.speed_m_s)
+
+
+class Geofence(ABC):
+    time: Tuple[int, int]
+
+    @abstractmethod
+    def contains_point(self, point: Tuple[float, float], offset_m: float) -> bool:
+        pass
+
+    def exists_at_time(self, time: int) -> bool:
+        return self.time[0] <= time <= self.time[1]
+
+
+class DiskGeofence(Geofence):
+    radius_m: float
+    center: Tuple[float, float]
+
+    def __init__(self, time: Tuple[int, int], radius_m: float, center: Tuple[float, float]):
+        self.time = time
+        self.radius_m = radius_m
+        self.center = center
+
+    def contains_point(self, point, offset_m):
+        return abs(self.center[0] - point[0]) ** 2 + abs(self.center[1] - point[1]) ** 2 <= (self.radius_m + offset_m) ** 2
