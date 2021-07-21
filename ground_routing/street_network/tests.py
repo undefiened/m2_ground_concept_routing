@@ -4,7 +4,7 @@ from unittest import TestCase
 import networkx as nx
 from geopy import distance
 
-from common import GDP, PathNotFoundException, TurnParamsTable, TurnParams, NO_GDP, DiskGeofence
+from ground_routing.common import GDP, PathNotFoundException, TurnParamsTable, TurnParams, NO_GDP, DiskGeofence
 from path_planner import StreetNetwork, PathPlanner, SNRequest, SNFlightplan
 
 

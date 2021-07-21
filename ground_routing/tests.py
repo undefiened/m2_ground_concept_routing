@@ -1,8 +1,8 @@
 from unittest import TestCase
 
-from common import Flightplan, Request, TurnParamsTable, TurnParams, NO_GDP
+from ground_routing.common import Flightplan, Request, TurnParamsTable, TurnParams, NO_GDP
 from planner import RoutePlanner, Layer
-from street_network.path_planner import PathPlanner, StreetNetwork, SNRequest, SNFlightplan
+from ground_routing.street_network.path_planner import PathPlanner, StreetNetwork, SNRequest, SNFlightplan
 
 
 class PlannerColoringTestCase(TestCase):

@@ -5,9 +5,9 @@ import pytest
 import simplejson
 import numpy as np
 
-from hexagonal.misc_functions import _is_feasible_coordinate, HexCoordinate
-from hexagonal.path_planner import HexMap, Request, CityMap, HexHelper, Flightplan, PathPlanner
-from common import GDP, PathNotFoundException
+from ground_routing.hexagonal.misc_functions import _is_feasible_coordinate, HexCoordinate
+from ground_routing.hexagonal.path_planner import HexMap, Request, CityMap, HexHelper, Flightplan, PathPlanner
+from ground_routing.common import GDP, PathNotFoundException
 
 
 class HexCoordinateTestCase(TestCase):

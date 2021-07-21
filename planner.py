@@ -1,10 +1,9 @@
-import copy
 import datetime
 import itertools
 import math
 from dataclasses import dataclass
 from enum import Enum, unique
-from typing import Tuple, List, Dict
+from typing import Tuple, List
 
 import networkx as nx
 import numpy
@@ -12,8 +11,8 @@ import numpy as np
 import pyclipper
 from networkx import NetworkXNoPath
 
-from common import GDP, Request, Flightplan, TurnParamsTable, PathNotFoundException
-from street_network.path_planner import PathPlanner as SNPathPlanner, StreetNetwork, SNRequest
+from ground_routing.common import Request, Flightplan, TurnParamsTable, PathNotFoundException
+from ground_routing.street_network import PathPlanner as SNPathPlanner, SNRequest
 from pyclipper import *
 from mip import Model, xsum, minimize, BINARY
 import pyproj

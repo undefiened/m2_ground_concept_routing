@@ -1,12 +1,11 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import Enum
 from typing import Tuple, List, TYPE_CHECKING
 
 import networkx as nx
 
 if TYPE_CHECKING:
-    from street_network.path_planner import SNFlightplan
+    from ground_routing.street_network import SNFlightplan
 
 
 class PathNotFoundException(Exception):

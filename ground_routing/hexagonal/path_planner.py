@@ -7,8 +7,8 @@ import numpy as np
 from dataclasses import dataclass
 from typing import List, Dict, Tuple, Union, Optional, Set
 
-from common import PathNotFoundException
-from hexagonal.misc_functions import HexCoordinate, _is_feasible_coordinate, _hex_distance, _list_of_occupied_by_obstacles_hexes
+from ground_routing.common import PathNotFoundException
+from ground_routing.hexagonal.misc_functions import HexCoordinate, _is_feasible_coordinate, _hex_distance, _list_of_occupied_by_obstacles_hexes
 
 
 @dataclass

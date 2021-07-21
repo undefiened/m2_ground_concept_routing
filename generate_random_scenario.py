@@ -2,7 +2,7 @@ import simplejson
 import numpy as np
 
 from main import CityMap, PathPlanner, GDP, Request, HexHelper
-from hexagonal.misc_functions import _is_feasible_coordinate
+from ground_routing.hexagonal import _is_feasible_coordinate
 
 
 def generate_random_requests(number_of_requests_to_generate, time_span, gdp, radius, new_requests_fname, heights_fname, map_details_fname):
