@@ -7,7 +7,7 @@ from typing import Tuple
 # from hexagonal.path_planner import CityMap, Request, PathPlanner
 from ground_routing.common import Request, GDP, TurnParamsTable, TurnParams
 from ground_routing.street_network.path_planner import PathPlanner, StreetNetwork
-from planner import Layer, RoutePlanner
+from ground_routing.planner import Layer, RoutePlanner
 
 
 def read_M2_flight_intents_file(filename):
@@ -73,7 +73,7 @@ def run_street_network_vienn():
         if not os.path.isfile('cache.pickle'):
             with open('cache.pickle', 'wb') as f:
                 flightplans, layers = rp.resolve_requests(requests, skip_coloring=True)
-                pickle.dump({'flightplans': flightplans, 'layers': layers}, f)
+                pickle.dump({'flightplans': flightplans, 'layers': layers, 'requests': requests}, f)
         else:
             with open('cache.pickle', 'rb') as f:
                 d = pickle.load(f)
