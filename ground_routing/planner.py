@@ -11,13 +11,14 @@ import numpy as np
 import pyclipper
 from networkx import NetworkXNoPath
 
-from ground_routing.common import Request, Flightplan, TurnParamsTable, PathNotFoundException
-from ground_routing.street_network import PathPlanner as SNPathPlanner, SNRequest
+from ground_routing.common import Request, Flightplan, TurnParamsTable, PathNotFoundException, Geofence, \
+    PCO_SCALING_FACTOR
+from ground_routing.street_network.path_planner import PathPlanner as SNPathPlanner, SNRequest
 from pyclipper import *
 from mip import Model, xsum, minimize, BINARY
 import pyproj
 
-PCO_SCALING_FACTOR = 10 ** 6
+
 
 @dataclass
 class RegionExtent:
@@ -42,6 +43,7 @@ class RoutePlanner:
     Only street network layers are supported at the time
     """
     layers: List[Layer]
+    geofences: List[Geofence]
     DELTA_T = 1
 
     @dataclass
@@ -51,29 +53,10 @@ class RoutePlanner:
         flightplan: Flightplan
         sn_request: SNRequest
 
-    def __init__(self, layers: List[Layer], turn_params_table: TurnParamsTable):
+    def __init__(self, layers: List[Layer], turn_params_table: TurnParamsTable, geofences: List[Geofence] = []):
         self.layers = sorted(layers, key=lambda x: x.altitude_m)
         self.turn_params_table = turn_params_table
-
-        # self.street_network_filename = street_network_filename
-        # self.timestep_s = timestep_s
-        # self.edge_length_s = edge_length_m
-        # self.default_gdp = default_gdp
-
-    # def _init_layers(self):
-    #     for layer in self.layers:
-    #         if layer.type == Layer.Type.NETWORK:
-    #             layer.path_planner = self._init_network_path_planner(layer)
-    #         elif layer.type == Layer.Type.HEXAGONAL:
-    #             raise NotImplementedError('Hexagonal resolution is not implemented yet')
-    #             layer.path_planner = self._init_hexagonal_path_planner(layer)
-
-    # def _init_network_path_planner(self, layer: Layer):
-    #     sn = StreetNetwork.from_graphml_file(self.street_network_filename)
-    #     return SNPathPlanner(sn, self.timestep_s, self.edge_length_s, self.default_gdp)
-    #
-    # def _init_hexagonal_path_planner(self, layer: Layer):
-    #     raise NotImplementedError()
+        self.geofences = geofences
 
     @property
     def top_layer(self) -> Layer:
@@ -88,13 +71,13 @@ class RoutePlanner:
     def _available_layers_intersect(self, route1: FlightplanToColor, route2: FlightplanToColor) -> bool:
         return bool(set(route1.available_layers) & set(route2.available_layers))
 
-    def _get_flightplan_buffer(self, route: FlightplanToColor):
+    def _get_flightplan_buffer(self, route: Flightplan):
         points = []
 
-        for waypoint in route.flightplan.waypoints:
+        for waypoint in route.waypoints:
             points.append((waypoint.norm_x, waypoint.norm_y))
 
-        buffer = self._get_points_buffer(points, route.sn_request.uncertainty_radius_m)
+        buffer = self._get_points_buffer(points, route.uncertainty_radius_m)
         return buffer
 
     @staticmethod
@@ -123,8 +106,8 @@ class RoutePlanner:
         return len(res) > 0
 
     def _initial_intersection_check(self, route1: FlightplanToColor, route2: FlightplanToColor) -> bool:
-        buffer1 = self._get_flightplan_buffer(route1)
-        buffer2 = self._get_flightplan_buffer(route2)
+        buffer1 = self._get_flightplan_buffer(route1.flightplan)
+        buffer2 = self._get_flightplan_buffer(route2.flightplan)
 
         return self._do_two_buffers_intersect(buffer1, buffer2)
 
@@ -195,8 +178,52 @@ class RoutePlanner:
 
         return flightplans_intersection
 
+    def _test_overall_intersection_with_geofence(self, flightplan: Flightplan, geofence: Geofence) -> bool:
+        if flightplan.departure_time > geofence.time[1] or geofence.time[0] > flightplan.destination_time:
+            return False
+
+        buffer1 = self._get_flightplan_buffer(flightplan)
+        buffer2 = geofence.get_pyclipper_geometry()
+
+        return self._do_two_buffers_intersect(buffer1, buffer2)
+
+    def _test_intersection_with_geofence_by_simulation(self, flightplan: Flightplan, geofence: Geofence) -> bool:
+        for t in np.arange(flightplan.departure_time, flightplan.destination_time + self.DELTA_T / 1000, self.DELTA_T):
+            if geofence.exists_at_time(t):
+                pos1 = [(x.norm_x, x.norm_y) for x in flightplan.position_range(t)]
+
+                buffer1 = self._get_points_buffer(pos1, flightplan.uncertainty_radius_m)
+                buffer2 = geofence.get_pyclipper_geometry()
+
+                if self._do_two_buffers_intersect(buffer1, buffer2):
+                    return True
+
+        return False
+
+    def _flightplan_intersects_geofence(self, flightplan: Flightplan, geofence: Geofence) -> bool:
+        return self._test_overall_intersection_with_geofence(flightplan, geofence) \
+               and self._test_intersection_with_geofence_by_simulation(flightplan, geofence)
+
+    def _find_intersections_with_geofences(self, flightplans_to_color: List[FlightplanToColor]) -> List[bool]:
+        flightplans_intersect = []
+        for flightplan in flightplans_to_color:
+            flightplan_intersects = False
+
+            for geofence in self.geofences:
+                if self._flightplan_intersects_geofence(flightplan.flightplan, geofence):
+                    flightplan_intersects = True
+
+            flightplans_intersect.append(flightplan_intersects)
+
+        return flightplans_intersect
+
     def _attempt_coloring(self, requests: List[Request]) -> Tuple[List[int], List[FlightplanToColor]]:
         flightplans_to_color = self._prepare_flightplans_to_color(requests)
+        intersections_with_geofences = self._find_intersections_with_geofences(flightplans_to_color)
+
+        if any(intersections_with_geofences):
+            return None, flightplans_to_color
+
         requests_intersections = self._find_flightplans_intersections(flightplans_to_color)
         colored_flightplans = self._color_flightplans(flightplans_to_color, requests_intersections)
 

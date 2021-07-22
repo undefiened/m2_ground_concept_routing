@@ -1,11 +1,17 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Tuple, List, TYPE_CHECKING
 
 import networkx as nx
+import pyclipper
+from pyclipper import PyclipperOffset, scale_to_clipper, scale_from_clipper
 
 if TYPE_CHECKING:
     from ground_routing.street_network import SNFlightplan
+
+
+PCO_SCALING_FACTOR = 10 ** 4
 
 
 class PathNotFoundException(Exception):
@@ -103,12 +109,13 @@ class Flightplan:
     departure_time: int
     destination_time: int
 
-    def __init__(self, waypoints: List[Waypoint], time_uncertainty_s: int, speed_m_s: float):
+    def __init__(self, waypoints: List[Waypoint], time_uncertainty_s: int, speed_m_s: float, uncertainty_radius_m: float):
         self.waypoints = waypoints
         self.departure_time = min([x.time for x in waypoints])
         self.destination_time = max([x.time for x in waypoints])
         self.time_uncertainty_s = time_uncertainty_s
         self.speed_m_s = speed_m_s
+        self.uncertainty_radius_m = uncertainty_radius_m
 
     def position_range(self, time) -> List[Waypoint]:
         if time < self.departure_time or time > self.destination_time + self.time_uncertainty_s:
@@ -196,7 +203,7 @@ class Flightplan:
                 previous_node_finish_time = previous_node_finish_time + time_cost
                 time_cost = 0
 
-        return cls(waypoints, request.time_uncertainty_s, request.speed_m_s)
+        return cls(waypoints, request.time_uncertainty_s, request.speed_m_s, request.uncertainty_radius_m)
 
     @classmethod
     def from_sn_flightplan(cls, graph: nx.Graph, sn_flightplan: "SNFlightplan"):
@@ -232,7 +239,7 @@ class Flightplan:
 
             previous_node_finish_time = previous_node_finish_time + time
 
-        return cls(waypoints, sn_flightplan.request.time_uncertainty_s, sn_flightplan.request.speed_m_s)
+        return cls(waypoints, sn_flightplan.request.time_uncertainty_s, sn_flightplan.request.speed_m_s, sn_flightplan.uncertainty_radius_m)
 
 
 class Geofence(ABC):
@@ -240,6 +247,10 @@ class Geofence(ABC):
 
     @abstractmethod
     def contains_point(self, point: Tuple[float, float], offset_m: float) -> bool:
+        pass
+
+    @abstractmethod
+    def get_pyclipper_geometry(self) -> List:
         pass
 
     def exists_at_time(self, time: int) -> bool:
@@ -257,3 +268,13 @@ class DiskGeofence(Geofence):
 
     def contains_point(self, point, offset_m):
         return abs(self.center[0] - point[0]) ** 2 + abs(self.center[1] - point[1]) ** 2 <= (self.radius_m + offset_m) ** 2
+
+    @lru_cache(1)
+    def get_pyclipper_geometry(self) -> List:
+        pco = PyclipperOffset()
+        pco.AddPath(scale_to_clipper([self.center, ], PCO_SCALING_FACTOR), pyclipper.JT_ROUND, pyclipper.ET_OPENSQUARE)
+
+        buffer = scale_from_clipper(pco.Execute(self.radius_m * PCO_SCALING_FACTOR),
+                                    PCO_SCALING_FACTOR)
+
+        return buffer

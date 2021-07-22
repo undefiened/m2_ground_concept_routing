@@ -1,6 +1,6 @@
 from unittest import TestCase
 
-from ground_routing.common import Flightplan, Request, TurnParamsTable, TurnParams, NO_GDP
+from ground_routing.common import Flightplan, Request, TurnParamsTable, TurnParams, NO_GDP, DiskGeofence
 from planner import RoutePlanner, Layer
 from ground_routing.street_network.path_planner import PathPlanner, StreetNetwork, SNRequest, SNFlightplan
 
@@ -13,7 +13,7 @@ class PlannerColoringTestCase(TestCase):
             Flightplan.Waypoint(0, 2, 0, 2, 2),
             Flightplan.Waypoint(0, 3, 0, 3, 3),
             Flightplan.Waypoint(0, 4, 0, 4, 4),
-        ], time_uncertainty_s=2, speed_m_s=1)
+        ], time_uncertainty_s=2, speed_m_s=1, uncertainty_radius_m=1)
 
         r = fp.position_range(0)
         self.assertEqual(r, [Flightplan.Waypoint(0, 0, 0, 0, 0), Flightplan.Waypoint(0, 0, 0, 0, 0),])
@@ -47,7 +47,7 @@ class PlannerColoringTestCase(TestCase):
             Flightplan.Waypoint(0, 0, 0, 0, 0),
             Flightplan.Waypoint(0, 2, 0, 2, 2),
             Flightplan.Waypoint(0, 4, 0, 4, 4),
-        ], time_uncertainty_s=2, speed_m_s=1)
+        ], time_uncertainty_s=2, speed_m_s=1, uncertainty_radius_m=1)
 
         r = fp.position_range(0)
         self.assertEqual(r, [Flightplan.Waypoint(0, 0, 0, 0, 0), Flightplan.Waypoint(0, 0, 0, 0, 0), ])
@@ -82,7 +82,7 @@ class PlannerColoringTestCase(TestCase):
             Flightplan.Waypoint(0, 0, 0, 0, 0),
             Flightplan.Waypoint(0, 2, 0, 2, 2),
             Flightplan.Waypoint(0, 4, 0, 4, 4),
-        ], time_uncertainty_s=0, speed_m_s=1)
+        ], time_uncertainty_s=0, speed_m_s=1, uncertainty_radius_m=1)
 
         r = fp.position_range(0)
         self.assertEqual(r, [Flightplan.Waypoint(0, 0, 0, 0, 0), Flightplan.Waypoint(0, 0, 0, 0, 0), ])
@@ -168,14 +168,14 @@ class PlannerColoringTestCase(TestCase):
                                              flightplan=Flightplan(waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 0),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 10),
-                                             ], time_uncertainty_s=0, speed_m_s=0),
+                                             ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
         fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
                                              flightplan=Flightplan(waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 11),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 20),
-                                             ], time_uncertainty_s=0, speed_m_s=0),
+                                             ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
         self.assertFalse(RoutePlanner._intersection_in_time(fp1, fp2))
@@ -184,7 +184,7 @@ class PlannerColoringTestCase(TestCase):
                                              flightplan=Flightplan(waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 1),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 5),
-                                             ], time_uncertainty_s=0, speed_m_s=0),
+                                             ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
         self.assertTrue(RoutePlanner._intersection_in_time(fp1, fp2))
@@ -193,7 +193,7 @@ class PlannerColoringTestCase(TestCase):
                                              flightplan=Flightplan(waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, -3),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 3),
-                                             ], time_uncertainty_s=0, speed_m_s=0),
+                                             ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
         self.assertTrue(RoutePlanner._intersection_in_time(fp1, fp2))
@@ -202,7 +202,7 @@ class PlannerColoringTestCase(TestCase):
                                              flightplan=Flightplan(waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 5),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 15),
-                                             ], time_uncertainty_s=0, speed_m_s=0),
+                                             ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
         self.assertTrue(RoutePlanner._intersection_in_time(fp1, fp2))
@@ -211,7 +211,7 @@ class PlannerColoringTestCase(TestCase):
                                              flightplan=Flightplan(waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, -10),
                                                  Flightplan.Waypoint(0, 0, 0, 0, -5),
-                                             ], time_uncertainty_s=0, speed_m_s=0),
+                                             ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
         self.assertFalse(RoutePlanner._intersection_in_time(fp1, fp2))
@@ -221,14 +221,14 @@ class PlannerColoringTestCase(TestCase):
                                              flightplan=Flightplan(waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 10),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 20),
-                                             ], time_uncertainty_s=0, speed_m_s=0),
+                                             ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
         fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
                                              flightplan=Flightplan(waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 0),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 9),
-                                             ], time_uncertainty_s=10, speed_m_s=0),
+                                             ], time_uncertainty_s=10, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
         self.assertTrue(RoutePlanner._intersection_in_time(fp1, fp2))
@@ -808,3 +808,101 @@ class PlannerColoringTestCase(TestCase):
         fp = Flightplan.from_sn_flightplan(pp.get_time_cost_enhanced_network(50), sn_flightplan)
         self.assertEqual(fp.waypoints[0].time, 0)
         self.assertEqual(fp.waypoints[3].time, 3)
+
+    def test_conflict_with_disk_geofence(self):
+        graphml_string = """<?xml version='1.0' encoding='utf-8'?>
+        <graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+          <key id="d12" for="edge" attr.name="length" attr.type="string" />
+          <key id="d2" for="node" attr.name="x" attr.type="string" />
+          <key id="d1" for="node" attr.name="y" attr.type="string" />
+          <graph edgedefault="undirected">
+            <node id="l">
+              <data key="d1">0</data>
+              <data key="d2">-1</data>
+            </node>
+            <node id="ll">
+              <data key="d1">0</data>
+              <data key="d2">-2</data>
+            </node>
+            <node id="r">
+              <data key="d1">0</data>
+              <data key="d2">1</data>
+            </node>
+            <node id="c">
+              <data key="d1">0</data>
+              <data key="d2">0</data>
+            </node>
+            <node id="t">
+              <data key="d1">1</data>
+              <data key="d2">0</data>
+            </node>
+            <node id="b">
+              <data key="d1">-1</data>
+              <data key="d2">0</data>
+            </node>
+
+
+            <edge source="ll" target="l" id="0">
+              <data key="d12">40</data>
+            </edge>
+            <edge source="l" target="c" id="1">
+              <data key="d12">40</data>
+            </edge>
+            <edge source="r" target="c" id="2">
+              <data key="d12">40</data>
+            </edge>
+            <edge source="t" target="c" id="3">
+              <data key="d12">40</data>
+            </edge>
+            <edge source="b" target="c" id="4">
+              <data key="d12">40</data>
+            </edge>
+          </graph>
+        </graphml>
+        """
+        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False,
+                                               turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
+
+        sn.original_network.nodes['c']['norm_x'] = 0
+        sn.original_network.nodes['c']['norm_y'] = 0
+
+        sn.original_network.nodes['l']['norm_x'] = -40
+        sn.original_network.nodes['l']['norm_y'] = 0
+
+        sn.original_network.nodes['r']['norm_x'] = 40
+        sn.original_network.nodes['r']['norm_y'] = 0
+
+        sn.original_network.nodes['t']['norm_x'] = 0
+        sn.original_network.nodes['t']['norm_y'] = 40
+
+        sn.original_network.nodes['b']['norm_x'] = 0
+        sn.original_network.nodes['b']['norm_y'] = -40
+
+        sn.original_network.nodes['ll']['norm_x'] = -80
+        sn.original_network.nodes['ll']['norm_y'] = 0
+
+        layers = [
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+        ]
+        rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
+
+        flightplans_to_color = rp._prepare_flightplans_to_color([
+            Request((0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),
+        ])
+        flightplan = flightplans_to_color[0].flightplan
+
+        disk_geofence = DiskGeofence((1, 3), 10, (0, 0))
+
+        self.assertTrue(rp._test_overall_intersection_with_geofence(flightplan, disk_geofence))
+        self.assertTrue(rp._test_intersection_with_geofence_by_simulation(flightplan, disk_geofence))
+
+        disk_geofence = DiskGeofence((10, 30), 10, (0, 0))
+
+        self.assertFalse(rp._test_overall_intersection_with_geofence(flightplan, disk_geofence))
+        self.assertFalse(rp._test_intersection_with_geofence_by_simulation(flightplan, disk_geofence))
+
+        disk_geofence = DiskGeofence((0, 1), 10, (0, 0))
+
+        self.assertTrue(rp._test_overall_intersection_with_geofence(flightplan, disk_geofence))
+        self.assertFalse(rp._test_intersection_with_geofence_by_simulation(flightplan, disk_geofence))
