@@ -72,8 +72,8 @@ def run_street_network_vienn():
     if CACHE:
         if not os.path.isfile('cache.pickle'):
             with open('cache.pickle', 'wb') as f:
-                flightplans, layers = rp.resolve_requests(requests, skip_coloring=True)
-                pickle.dump({'flightplans': flightplans, 'layers': layers, 'requests': requests}, f)
+                flightplans, _ = rp.resolve_requests(requests, skip_coloring=True)
+                pickle.dump({'flightplans': flightplans, 'layers': layers, 'requests': requests, 'route_planner': rp}, f)
         else:
             with open('cache.pickle', 'rb') as f:
                 d = pickle.load(f)

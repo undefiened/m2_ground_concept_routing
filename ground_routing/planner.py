@@ -272,6 +272,9 @@ class RoutePlanner:
         print('ATTEMPTING COLORING')
         if not skip_coloring:
             layers, flightplans = self._attempt_coloring(requests)
+
+            for i in range(len(flightplans)):
+                flightplans[i].flightplan.layer = layers[i]
         else:
             flightplans = self._prepare_flightplans_to_color(requests)
 
@@ -300,7 +303,7 @@ class RoutePlanner:
                 if best_flightplan is not None:
                     self.layers[best_flightplan_layer].path_planner.add_flightplan(best_flightplan)
                     layers.append(best_flightplan_layer)
-                    te_flightplans.append(Flightplan.from_sn_flightplan(self.layers[best_flightplan_layer].path_planner.get_time_cost_enhanced_network(flightplan.sn_request.speed_m_s), best_flightplan))
+                    te_flightplans.append(Flightplan.from_sn_flightplan(self.layers[best_flightplan_layer].path_planner.get_time_cost_enhanced_network(flightplan.sn_request.speed_m_s), best_flightplan, layer=best_flightplan_layer))
 
             return te_flightplans, layers
 
