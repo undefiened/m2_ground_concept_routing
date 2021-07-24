@@ -28,6 +28,7 @@ NO_GDP = GDP(1, 0, 1000)
 
 @dataclass
 class Request:
+    id: str
     origin: Tuple[float, float]
     destination: Tuple[float, float]
     time_uncertainty_s: int
@@ -105,17 +106,19 @@ class Flightplan:
         time: int
         turning: bool = False
 
+    id: str
     waypoints: List[Waypoint]
     departure_time: int
     destination_time: int
 
-    def __init__(self, waypoints: List[Waypoint], time_uncertainty_s: int, speed_m_s: float, uncertainty_radius_m: float):
+    def __init__(self, id: str, waypoints: List[Waypoint], time_uncertainty_s: int, speed_m_s: float, uncertainty_radius_m: float):
         self.waypoints = waypoints
         self.departure_time = min([x.time for x in waypoints])
         self.destination_time = max([x.time for x in waypoints])
         self.time_uncertainty_s = time_uncertainty_s
         self.speed_m_s = speed_m_s
         self.uncertainty_radius_m = uncertainty_radius_m
+        self.id = id
 
     def position_range(self, time) -> List[Waypoint]:
         if time < self.departure_time or time > self.destination_time + self.time_uncertainty_s:
@@ -203,7 +206,7 @@ class Flightplan:
                 previous_node_finish_time = previous_node_finish_time + time_cost
                 time_cost = 0
 
-        return cls(waypoints, request.time_uncertainty_s, request.speed_m_s, request.uncertainty_radius_m)
+        return cls(request.id, waypoints, request.time_uncertainty_s, request.speed_m_s, request.uncertainty_radius_m)
 
     @classmethod
     def from_sn_flightplan(cls, graph: nx.Graph, sn_flightplan: "SNFlightplan"):
@@ -239,7 +242,7 @@ class Flightplan:
 
             previous_node_finish_time = previous_node_finish_time + time
 
-        return cls(waypoints, sn_flightplan.request.time_uncertainty_s, sn_flightplan.request.speed_m_s, sn_flightplan.uncertainty_radius_m)
+        return cls(sn_flightplan.id, waypoints, sn_flightplan.request.time_uncertainty_s, sn_flightplan.request.speed_m_s, sn_flightplan.uncertainty_radius_m)
 
 
 class Geofence(ABC):

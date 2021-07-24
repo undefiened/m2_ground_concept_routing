@@ -56,7 +56,7 @@ class RoutePlanner:
     def __init__(self, layers: List[Layer], turn_params_table: TurnParamsTable, geofences: List[Geofence] = []):
         self.layers = sorted(layers, key=lambda x: x.altitude_m)
         self.turn_params_table = turn_params_table
-        self.geofences = geofences
+        self._geofences = geofences
 
     @property
     def top_layer(self) -> Layer:
@@ -435,11 +435,3 @@ class RoutePlanner:
         scenario += "{time}>VNAV D{id} ON\n".format(id=id, time=time)
 
         return scenario
-
-
-class TacticalResolution:
-    def __init__(self, layers: List[Layer], known_flightplans: List[Flightplan]):
-        pass
-
-    def resolve_traffic(self, drones_deviated_from_flightplans: List[str], drones_positions: List[Tuple[str, float, float]]):
-        pass

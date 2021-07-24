@@ -24,6 +24,7 @@ def plot_three_points(n1, n2, n3):
 
 
 class SNRequest:
+    id: str
     start_node: str
     destination_node: str
     start_time: int
@@ -32,7 +33,7 @@ class SNRequest:
     speed_m_s: float
     gdp: GDP
 
-    def __init__(self, start_node: str, destination_node: str, start_time: int, drone_radius_m: float, speed_m_s: float, time_uncertainty_s: int = 0, gdp: GDP = None):
+    def __init__(self, id: str, start_node: str, destination_node: str, start_time: int, drone_radius_m: float, speed_m_s: float, time_uncertainty_s: int = 0, gdp: GDP = None):
         self.start_node = start_node
         self.destination_node = destination_node
         self.start_time = start_time
@@ -40,6 +41,7 @@ class SNRequest:
         self.speed_m_s = speed_m_s
         self.time_uncertainty_s = time_uncertainty_s
         self.gdp = gdp
+        self.id = id
 
     def __str__(self):
         return 'Request(from "{}" to "{}" at T={} with uncertainty {}s and {}m, speed {}m/s and GDP {})'.format(
@@ -52,6 +54,7 @@ class SNRequest:
 
 
 class SNFlightplan:
+    id: str
     nodes: Dict[int, str]
     start_time: int
     end_time: int
@@ -61,7 +64,7 @@ class SNFlightplan:
     request: SNRequest
     weight: float
 
-    def __init__(self, nodes: List[Tuple[int, str]], speed_node: int, time_uncertainty: int, radius_m: float, request: SNRequest):
+    def __init__(self, id: str, nodes: List[Tuple[int, str]], speed_node: int, time_uncertainty: int, radius_m: float, request: SNRequest):
         self.nodes = {}
         self._fill_nodes(nodes)
         self.start_time = min([x[0] for x in nodes])
@@ -70,6 +73,7 @@ class SNFlightplan:
         self.time_uncertainty = time_uncertainty
         self.uncertainty_radius_m = radius_m
         self.request = request
+        self.id = id
 
     def _fill_nodes(self, nodes: List[Tuple[int, str]]):
         for node in nodes:
@@ -569,7 +573,7 @@ class PathPlanner:
     def convert_request_to_sn(self, request: Request) -> SNRequest:
         start_node = self.find_closest_node(request.origin[0], request.origin[1])
         end_node = self.find_closest_node(request.destination[0], request.destination[1])
-        sn_request = SNRequest(start_node, end_node, request.departure_time, request.uncertainty_radius_m, request.speed_m_s, request.time_uncertainty_s, request.gdp)
+        sn_request = SNRequest(request.id, start_node, end_node, request.departure_time, request.uncertainty_radius_m, request.speed_m_s, request.time_uncertainty_s, request.gdp)
         return sn_request
 
     def resolve_request(self, request: Union[Request, SNRequest]):
@@ -590,7 +594,7 @@ class PathPlanner:
         for i, node_id in enumerate(path):
             points.append((self._get_node_time(node_id), self._get_node_id(node_id)))
 
-        new_flightplan = SNFlightplan(nodes=points, speed_node=math.floor(1 / self._request_time_to_pass_node(request)),
+        new_flightplan = SNFlightplan(id=request.id, nodes=points, speed_node=math.floor(1 / self._request_time_to_pass_node(request)),
                                       time_uncertainty=self._request_time_uncertainty_to_ticks(request), radius_m=request.uncertainty_radius_m, request=request)
         new_flightplan.weight = weight
 

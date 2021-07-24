@@ -1,13 +1,13 @@
 from unittest import TestCase
 
 from ground_routing.common import Flightplan, Request, TurnParamsTable, TurnParams, NO_GDP, DiskGeofence
-from planner import RoutePlanner, Layer
+from ground_routing.planner import RoutePlanner, Layer
 from ground_routing.street_network.path_planner import PathPlanner, StreetNetwork, SNRequest, SNFlightplan
 
 
 class PlannerColoringTestCase(TestCase):
     def test_location_range_precise(self):
-        fp = Flightplan(waypoints=[
+        fp = Flightplan(id='D0', waypoints=[
             Flightplan.Waypoint(0, 0, 0, 0, 0),
             Flightplan.Waypoint(0, 1, 0, 1, 1),
             Flightplan.Waypoint(0, 2, 0, 2, 2),
@@ -43,7 +43,7 @@ class PlannerColoringTestCase(TestCase):
         self.assertRaises(Exception, fp.position_range, -1)
 
     def test_location_range_partial(self):
-        fp = Flightplan(waypoints=[
+        fp = Flightplan(id='D0', waypoints=[
             Flightplan.Waypoint(0, 0, 0, 0, 0),
             Flightplan.Waypoint(0, 2, 0, 2, 2),
             Flightplan.Waypoint(0, 4, 0, 4, 4),
@@ -78,7 +78,7 @@ class PlannerColoringTestCase(TestCase):
         self.assertRaises(Exception, fp.position_range, -1)
 
     def test_location_range_no_uncertainty(self):
-        fp = Flightplan(waypoints=[
+        fp = Flightplan(id='D0', waypoints=[
             Flightplan.Waypoint(0, 0, 0, 0, 0),
             Flightplan.Waypoint(0, 2, 0, 2, 2),
             Flightplan.Waypoint(0, 4, 0, 4, 4),
@@ -165,14 +165,14 @@ class PlannerColoringTestCase(TestCase):
 
     def test_intersection_in_time(self):
         fp1 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(waypoints=[
+                                             flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 0),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 10),
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
         fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(waypoints=[
+                                             flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 11),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 20),
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
@@ -181,7 +181,7 @@ class PlannerColoringTestCase(TestCase):
         self.assertFalse(RoutePlanner._intersection_in_time(fp1, fp2))
 
         fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(waypoints=[
+                                             flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 1),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 5),
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
@@ -190,7 +190,7 @@ class PlannerColoringTestCase(TestCase):
         self.assertTrue(RoutePlanner._intersection_in_time(fp1, fp2))
 
         fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(waypoints=[
+                                             flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, -3),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 3),
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
@@ -199,7 +199,7 @@ class PlannerColoringTestCase(TestCase):
         self.assertTrue(RoutePlanner._intersection_in_time(fp1, fp2))
 
         fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(waypoints=[
+                                             flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 5),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 15),
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
@@ -208,7 +208,7 @@ class PlannerColoringTestCase(TestCase):
         self.assertTrue(RoutePlanner._intersection_in_time(fp1, fp2))
 
         fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(waypoints=[
+                                             flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, -10),
                                                  Flightplan.Waypoint(0, 0, 0, 0, -5),
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
@@ -218,14 +218,14 @@ class PlannerColoringTestCase(TestCase):
 
     def test_intersection_in_time_with_uncertainty(self):
         fp1 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(waypoints=[
+                                             flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 10),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 20),
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
         fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(waypoints=[
+                                             flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 0),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 9),
                                              ], time_uncertainty_s=10, speed_m_s=0, uncertainty_radius_m=1),
@@ -351,10 +351,10 @@ class PlannerColoringTestCase(TestCase):
         rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         flightplans_to_color = rp._prepare_flightplans_to_color([
-            Request((-1, 0), (1, 0), 0, 10, 0, 20, NO_GDP),
-            Request((0, -1), (0, 1), 0, 10, 0, 20, NO_GDP),
-            Request((-2, 0), (-1, 0), 0, 10, 0, 20, NO_GDP),
-            Request((-2, 0), (1, 0), 0, 10, 0, 20, NO_GDP),
+            Request('D0', (-1, 0), (1, 0), 0, 10, 0, 20, NO_GDP),
+            Request('D0', (0, -1), (0, 1), 0, 10, 0, 20, NO_GDP),
+            Request('D0', (-2, 0), (-1, 0), 0, 10, 0, 20, NO_GDP),
+            Request('D0', (-2, 0), (1, 0), 0, 10, 0, 20, NO_GDP),
         ])
 
         self.assertTrue(rp._initial_intersection_check(flightplans_to_color[0], flightplans_to_color[1]))
@@ -439,11 +439,11 @@ class PlannerColoringTestCase(TestCase):
         rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         flightplans_to_color = rp._prepare_flightplans_to_color([
-            Request((-1, 0), (1, 0), 0, 10, 0, 10, NO_GDP),
-            Request((0, -1), (0, 1), 0, 10, 0, 10, NO_GDP),
-            Request((-2, 0), (-1, 0), 0, 10, 0, 10, NO_GDP),
-            Request((-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP),
-            Request((-2, 0), (1, 0), 0, 10, -4, 10, NO_GDP),
+            Request('D0', (-1, 0), (1, 0), 0, 10, 0, 10, NO_GDP),
+            Request('D0', (0, -1), (0, 1), 0, 10, 0, 10, NO_GDP),
+            Request('D0', (-2, 0), (-1, 0), 0, 10, 0, 10, NO_GDP),
+            Request('D0', (-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP),
+            Request('D0', (-2, 0), (1, 0), 0, 10, -4, 10, NO_GDP),
         ])
 
         self.assertTrue(rp._find_intersection_by_simulation(flightplans_to_color[0], flightplans_to_color[1], rp._intersection_in_time(flightplans_to_color[0], flightplans_to_color[1])))
@@ -529,9 +529,9 @@ class PlannerColoringTestCase(TestCase):
         rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         flightplans_to_color = rp._prepare_flightplans_to_color([
-            Request((0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),
-            Request((-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP),
-            Request((0, -1), (0, 1), 1, 10, 0, 10, NO_GDP),
+            Request('D0', (0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),
+            Request('D0', (-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP),
+            Request('D0', (0, -1), (0, 1), 1, 10, 0, 10, NO_GDP),
         ])
 
         self.assertTrue(rp._find_intersection_by_simulation(flightplans_to_color[0], flightplans_to_color[1], rp._intersection_in_time(flightplans_to_color[0], flightplans_to_color[1])))
@@ -613,15 +613,15 @@ class PlannerColoringTestCase(TestCase):
             Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
         ]
         rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
-        requests = [Request((0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),
-                    Request((-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP),]
-        # res, flightplans = rp._attempt_coloring(requests)
-        #
-        # self.assertIn(res, [[0, 1], [1, 0]])
+        requests = [Request('D0', (0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),
+                    Request('D0', (-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP),]
+        res, flightplans = rp._attempt_coloring(requests)
+
+        self.assertIn(res, [[0, 1], [1, 0]])
 
         requests = [
-            Request((-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP),
-            Request((0, -1), (0, 1), 1, 10, 0, 10, NO_GDP),
+            Request('D0', (-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP),
+            Request('D0', (0, -1), (0, 1), 1, 10, 0, 10, NO_GDP),
         ]
         res, flightplans = rp._attempt_coloring(requests)
 
@@ -633,8 +633,8 @@ class PlannerColoringTestCase(TestCase):
 
         rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
-        requests = [Request((0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),
-                    Request((-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP), ]
+        requests = [Request('D0', (0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),
+                    Request('D0', (-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP), ]
         res, flightplans = rp._attempt_coloring(requests)
 
         self.assertIsNone(res)
@@ -720,10 +720,10 @@ class PlannerColoringTestCase(TestCase):
         rp = RoutePlanner(layers=layers, turn_params_table=turn_params_table)
 
         flightplans_to_color = rp._prepare_flightplans_to_color([
-            Request((-1, 0), (0, -1), 0, 10, 0, 10, NO_GDP),
-            Request((1, 0), (-1, 0), 0, 10, 0, 10, NO_GDP),
-            Request((1, 0), (-1, 0), 0, 10, 3, 10, NO_GDP),
-            Request((1, 0), (-1, 0), 0, 10, 10, 10, NO_GDP),
+            Request('D0', (-1, 0), (0, -1), 0, 10, 0, 10, NO_GDP),
+            Request('D0', (1, 0), (-1, 0), 0, 10, 0, 10, NO_GDP),
+            Request('D0', (1, 0), (-1, 0), 0, 10, 3, 10, NO_GDP),
+            Request('D0', (1, 0), (-1, 0), 0, 10, 10, 10, NO_GDP),
         ])
 
         self.assertTrue(rp._find_intersection_by_simulation(flightplans_to_color[0], flightplans_to_color[1],
@@ -794,15 +794,15 @@ class PlannerColoringTestCase(TestCase):
         sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False,
                                                turn_params_table=turn_params_table)
 
-        sn_flightplan = SNFlightplan([(0, 'll'), (1, 'll'), (2, 'l'), (3, 'c'), (4, 'r')], 1, 0, 0, SNRequest('ll', 'r', 0, 0, 50, 0))
+        sn_flightplan = SNFlightplan('D0', [(0, 'll'), (1, 'll'), (2, 'l'), (3, 'c'), (4, 'r')], 1, 0, 0, SNRequest('D0', 'll', 'r', 0, 0, 50, 0))
         pp = PathPlanner(sn, 1, 50, None)
 
         fp = Flightplan.from_sn_flightplan(pp.get_time_cost_enhanced_network(50), sn_flightplan)
         self.assertEqual(fp.waypoints[0].time, 1)
         self.assertEqual(fp.waypoints[3].time, 4)
 
-        sn_flightplan = SNFlightplan([(0, 'll'), (1, 'l'), (2, 'c'), (3, 'r')], 1, 0, 0,
-                                     SNRequest('ll', 'r', 0, 0, 50, 0))
+        sn_flightplan = SNFlightplan('D0', [(0, 'll'), (1, 'l'), (2, 'c'), (3, 'r')], 1, 0, 0,
+                                     SNRequest('D0', 'll', 'r', 0, 0, 50, 0))
         pp = PathPlanner(sn, 1, 50, None)
 
         fp = Flightplan.from_sn_flightplan(pp.get_time_cost_enhanced_network(50), sn_flightplan)
@@ -888,7 +888,7 @@ class PlannerColoringTestCase(TestCase):
         rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         flightplans_to_color = rp._prepare_flightplans_to_color([
-            Request((0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),
+            Request('D0', (0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),
         ])
         flightplan = flightplans_to_color[0].flightplan
 
