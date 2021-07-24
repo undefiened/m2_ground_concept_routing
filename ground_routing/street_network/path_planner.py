@@ -153,6 +153,19 @@ class StreetNetwork:
         for u, v in self.original_network.edges:
             self.original_network[u][v]['length'] = float(self.original_network[u][v]['length'])
 
+    def coordinate_to_norm(self, lat, lon) -> Tuple[float, float]:
+        bounding_box = self._bounding_box_lrbt()
+
+        height = distance.distance((bounding_box.bottom, bounding_box.left), (bounding_box.top, bounding_box.left)).m
+        width = distance.distance((bounding_box.bottom, bounding_box.left), (bounding_box.bottom, bounding_box.right)).m
+
+        norm_x = ((lon - bounding_box.left) / (
+                    bounding_box.right - bounding_box.left)) * width
+        norm_y = ((lat - bounding_box.bottom) / (
+                    bounding_box.top - bounding_box.bottom)) * height
+
+        return norm_x, norm_y
+
     def _compute_normalized_positions(self):
         bounding_box = self._bounding_box_lrbt()
 
@@ -340,7 +353,7 @@ class PathPlanner:
     timestep_s: int
     network: nx.DiGraph
     edge_length_m: float
-    geofences: List[Geofence]
+    _geofences: List[Geofence]
 
     def __init__(self, street_network: StreetNetwork, timestep_s: int, edge_length_m: float, default_gdp: GDP, geofences: List[Geofence] = []):
         self.street_network = street_network
@@ -349,7 +362,7 @@ class PathPlanner:
         self.temporary_flightplans = []
         self.timestep_s = timestep_s
         self.edge_length_m = edge_length_m
-        self.geofences = geofences
+        self._geofences = geofences
 
         self.network = self.street_network.get_subdivided_network(edge_length_m)
 
@@ -359,6 +372,14 @@ class PathPlanner:
         flightplans.extend(self.permanent_flightplans)
         flightplans.extend(self.temporary_flightplans)
         return flightplans
+
+    @property
+    def geofences(self):
+        return self._geofences
+
+    def add_geofence(self, geofence: Geofence):
+        self._list_of_occupied_nodes_for_request.cache_clear()
+        self._geofences.append(geofence)
 
     @lru_cache(200)
     def _list_of_occupied_nodes_for_request(self, time: int, request: SNRequest) -> Set[str]:
@@ -379,7 +400,7 @@ class PathPlanner:
                         occupied_nodes.update(nodes_covered_by_flightplan)
 
         nodes_covered_by_geofences = []
-        current_geofences = [x for x in self.geofences if x.exists_at_time(time)]
+        current_geofences = [x for x in self._geofences if x.exists_at_time(time)]
         if len(current_geofences) > 0:
             for node, data in self.network.nodes(data=True):
                 for geofence in current_geofences:
@@ -600,3 +621,8 @@ class PathPlanner:
                 edge['time_cost'] = self._time_to_pass_node_with_speed(speed_m_s)
 
         return new_network
+
+    def _clear_cache(self):
+        self._list_of_occupied_nodes_for_request.cache_clear()
+        self._request_time_to_pass_node.cache_clear()
+        self.list_of_pending_drone_movements.cache_clear()

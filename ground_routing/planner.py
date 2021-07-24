@@ -43,7 +43,7 @@ class RoutePlanner:
     Only street network layers are supported at the time
     """
     layers: List[Layer]
-    geofences: List[Geofence]
+    _geofences: List[Geofence]
     DELTA_T = 1
 
     @dataclass
@@ -209,7 +209,7 @@ class RoutePlanner:
         for flightplan in flightplans_to_color:
             flightplan_intersects = False
 
-            for geofence in self.geofences:
+            for geofence in self._geofences:
                 if self._flightplan_intersects_geofence(flightplan.flightplan, geofence):
                     flightplan_intersects = True
 

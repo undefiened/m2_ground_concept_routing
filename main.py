@@ -52,8 +52,8 @@ def run_street_network_vienn():
 
     requests = []
 
-    interesting_intents = range(len(intents))
-    # interesting_intents = range()
+    # interesting_intents = range(len(intents))
+    interesting_intents = range(2)
     # interesting_intents = [9, ]
     gdp = GDP(10, 60, 1)
 
@@ -63,8 +63,8 @@ def run_street_network_vienn():
 
     layers = [
         Layer(0, Layer.Type.NETWORK, PathPlanner(sn, 1, spd_m_s, gdp)),
-        Layer(50, Layer.Type.NETWORK, PathPlanner(sn, 1, spd_m_s, gdp)),
-        Layer(100, Layer.Type.NETWORK, PathPlanner(sn, 1, spd_m_s, gdp)),
+        # Layer(50, Layer.Type.NETWORK, PathPlanner(sn, 1, spd_m_s, gdp)),
+        # Layer(100, Layer.Type.NETWORK, PathPlanner(sn, 1, spd_m_s, gdp)),
     ]
 
     rp = RoutePlanner(layers, turn_costs)
