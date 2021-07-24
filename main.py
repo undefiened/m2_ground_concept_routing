@@ -57,8 +57,8 @@ def run_street_network_vienn():
     # interesting_intents = [9, ]
     gdp = GDP(10, 60, 1)
 
-    for intent in [intents[x] for x in interesting_intents]:
-        request = Request(intent['origin'], intent['destination'], 15, spd_m_s, intent['time_start'], 60, gdp)
+    for i, intent in enumerate([intents[x] for x in interesting_intents]):
+        request = Request('D{}'.format(i), intent['origin'], intent['destination'], 15, spd_m_s, intent['time_start'], 60, gdp)
         requests.append(request)
 
     layers = [
