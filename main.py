@@ -41,6 +41,7 @@ def read_M2_flight_intents_file(filename):
 def run_street_network_vienn():
     CACHE = True
     intents = read_M2_flight_intents_file('../Test_Scenario/M2_Test_FlightPlan.txt')
+    intents = read_M2_flight_intents_file('../Test_Scenario/M2_Tactical_Test.txt')
 
     turn_costs = TurnParamsTable([
         TurnParams(0, 30, 30, 0),
@@ -53,7 +54,7 @@ def run_street_network_vienn():
     requests = []
 
     # interesting_intents = range(len(intents))
-    interesting_intents = range(2)
+    interesting_intents = range(3)
     # interesting_intents = [9, ]
     gdp = GDP(10, 60, 1)
 
@@ -72,17 +73,17 @@ def run_street_network_vienn():
     if CACHE:
         if not os.path.isfile('cache.pickle'):
             with open('cache.pickle', 'wb') as f:
-                flightplans, _ = rp.resolve_requests(requests, skip_coloring=True)
-                pickle.dump({'flightplans': flightplans, 'layers': layers, 'requests': requests, 'route_planner': rp}, f)
+                flightplans, flightplans_layers = rp.resolve_requests(requests, skip_coloring=True)
+                pickle.dump({'flightplans': flightplans, 'layers': flightplans_layers, 'requests': requests, 'route_planner': rp}, f)
         else:
             with open('cache.pickle', 'rb') as f:
                 d = pickle.load(f)
                 flightplans = d['flightplans']
-                layers = d['layers']
+                flightplans_layers = d['layers']
     else:
         flightplans, layers = rp.resolve_requests(requests, skip_coloring=True)
 
-    res = rp.convert_flightplans_to_M2_scenarios(flightplans, layers)
+    res = rp.convert_flightplans_to_M2_scenarios(flightplans, flightplans_layers)
 
     with open('new_scenario.scn', 'w') as f:
         f.write(''.join(res))

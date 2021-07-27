@@ -107,6 +107,7 @@ class Flightplan:
         norm_y: float
         time: int
         turning: bool = False
+        original_node_name: str = None
 
     id: str
     waypoints: List[Waypoint]
@@ -193,6 +194,31 @@ class Flightplan:
 
         return position_range_waypoints
 
+    def position_at_time(self, time) -> Waypoint:
+        if not self.is_present_at_time(time):
+            raise Exception('Not present at time {}'.format(time))
+
+        if time == self.waypoints[0].time:
+            return self.waypoints[0]
+
+        for i in range(len(self.waypoints) - 1):
+            if self.waypoints[i+1].time == time:
+                return self.waypoints[i+1]
+
+            if self.waypoints[i].time <= time and self.waypoints[i+1].time >= time:
+                w1 = self.waypoints[i]
+                w2 = self.waypoints[i+1]
+                ratio = (time - w1.time) / (w2.time - w1.time)
+                return self.Waypoint(
+                    x=w1.x + ratio * (w2.x - w1.x),
+                    y=w1.y + ratio * (w2.y - w1.y),
+                    norm_x=w1.norm_x + ratio * (w2.norm_x - w1.norm_x),
+                    norm_y=w1.norm_y + ratio * (w2.norm_y - w1.norm_y),
+                    time=time
+                )
+
+        raise Exception
+
     @classmethod
     def from_graph_path(cls, graph: nx.Graph, path: List[str], request: Request, layer: int = None) -> "Flightplan":
         waypoints = []
@@ -205,7 +231,7 @@ class Flightplan:
             end_node = graph.nodes[path[i+1]]
             time_cost += graph.edges[path[i], path[i + 1]]['time_cost']
             if end_node['turning'] and not graph.nodes[path[i]]['turning']:
-                waypoints.append(cls.Waypoint(end_node['x'], end_node['y'], end_node['norm_x'], end_node['norm_y'], previous_node_finish_time + time_cost, True))
+                waypoints.append(cls.Waypoint(end_node['x'], end_node['y'], end_node['norm_x'], end_node['norm_y'], previous_node_finish_time + time_cost, True, original_node_name=path[i+1]))
 
                 previous_node_finish_time = previous_node_finish_time + time_cost
                 time_cost = 0
@@ -241,11 +267,17 @@ class Flightplan:
                 end_node = graph.nodes[path[path_keys[i + 1]]]
 
                 waypoints.append(cls.Waypoint(end_node['x'], end_node['y'], end_node['norm_x'], end_node['norm_y'],
-                                              previous_node_finish_time + time, graph.nodes[path[path_keys[i + 1]]]['turning']))
+                                              previous_node_finish_time + time, graph.nodes[path[path_keys[i + 1]]]['turning'], original_node_name=path[path_keys[i + 1]]))
 
             previous_node_finish_time = previous_node_finish_time + time
 
         return cls(sn_flightplan.id, waypoints, sn_flightplan.request.time_uncertainty_s, sn_flightplan.request.speed_m_s, sn_flightplan.uncertainty_radius_m, layer=layer)
+
+    def is_present_at_time(self, time: int) -> bool:
+        return time >= self.departure_time and time <= self.destination_time
+
+    def is_present_at_time_with_uncertainty(self, time: int, additional_uncertainty: int) -> bool:
+        return time >= self.departure_time - additional_uncertainty and time <= self.destination_time + self.time_uncertainty_s
 
 
 class Geofence(ABC):

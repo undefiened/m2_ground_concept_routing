@@ -5,3 +5,4 @@ networkx
 pyproj
 pyclipper
 Cython
+mip

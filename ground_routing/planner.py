@@ -45,6 +45,7 @@ class RoutePlanner:
     layers: List[Layer]
     _geofences: List[Geofence]
     DELTA_T = 1
+    M_S_TO_KNOT = 1.94384
 
     @dataclass
     class FlightplanToColor:
@@ -310,28 +311,29 @@ class RoutePlanner:
     def convert_flightplans_to_M2_scenarios(self, flightplans: List[Flightplan], layers: List[int]) -> List[str]:
         scenarios = []
         header = ""
+
         header += "00:00:00>HOLD\n"
         header += "00:00:00>ASAS ON\n"
+        header += "00:00:00>CDMETHOD GROUNDCONFLICTDETECTION\n"
         header += "00:00:00>PAN 48.223775 16.337976\n"
+        header += "00:00:00>RESO GROUNDCONFLICTRESOLUTION\n"
+
+
         header += "00:00:00>ZOOM 50\n"
         header += "00:00:00>VIS MAP TILEDMAP\n"
         header += "00:00:00>ZONER 0.0161987\n"
         header += "00:00:00>ZONEDH 1\n"
 
+
+
         scenarios.append(header)
         for i in range(len(flightplans)):
-            scenarios.append(self.convert_flightplan_to_M2_scenario(flightplans[i], layers[i], i))
+            scenarios.append(self.convert_flightplan_to_M2_scenario(flightplans[i], layers[i]))
 
         return scenarios
 
-    def convert_flightplan_to_M2_scenario(self, flightplan: Flightplan, layer: int, id: int) -> str:
+    def _prepare_waypoints(self, flightplan: Flightplan) -> List[Flightplan.Waypoint]:
         EVERY_NON_TURNING = 7
-
-        geodesic = pyproj.Geod(ellps='WGS84')
-
-        scenario = ""
-
-        source = flightplan.waypoints[0]
 
         turning = [x.turning for x in flightplan.waypoints]
 
@@ -343,7 +345,7 @@ class RoutePlanner:
             if t:
                 if started:
                     started = False
-                    series_of_non_turning.append((start, i-1))
+                    series_of_non_turning.append((start, i - 1))
             else:
                 if not started:
                     start = i
@@ -355,11 +357,12 @@ class RoutePlanner:
             serie_size = serie[1] - serie[0] + 1
             if serie_size > EVERY_NON_TURNING:
                 number_of_waypoints_to_keep = math.floor(serie_size / EVERY_NON_TURNING)
-                waypoints_to_keep = numpy.floor(numpy.linspace(serie[0], serie[1], number_of_waypoints_to_keep + 2)[1:-1])
+                waypoints_to_keep = numpy.floor(
+                    numpy.linspace(serie[0], serie[1], number_of_waypoints_to_keep + 2)[1:-1])
             else:
                 waypoints_to_keep = []
 
-            for i in range(serie[0], serie[1]+1):
+            for i in range(serie[0], serie[1] + 1):
                 if i not in waypoints_to_keep:
                     waypoints_to_remove.append(i)
 
@@ -368,27 +371,45 @@ class RoutePlanner:
         waypoints_to_remove = []
 
         for i in range(len(waypoints) - 1):
-            if abs(waypoints[i].x - waypoints[i+1].x) < 0.00001 and abs(waypoints[i].y - waypoints[i+1].y) < 0.00001:
+            if abs(waypoints[i].x - waypoints[i + 1].x) < 0.00001 and abs(
+                    waypoints[i].y - waypoints[i + 1].y) < 0.00001:
                 waypoints_to_remove.append(i)
 
         waypoints = [x for i, x in enumerate(waypoints) if i not in waypoints_to_remove]
 
-        spd = 30
-        initial_heading, _, _ = geodesic.inv(source.x, source.y, waypoints[1].x, waypoints[1].y)
+
+        return waypoints
+
+    def get_flightplan_M2_waypoints(self, flightplan: Flightplan, layer: int, no_time: bool=False) -> str:
+        id = flightplan.id
+
+        waypoints = self._prepare_waypoints(flightplan)
+        geodesic = pyproj.Geod(ellps='WGS84')
+
+        spd = flightplan.speed_m_s * self.M_S_TO_KNOT
 
         time = '0' + str(datetime.timedelta(seconds=flightplan.departure_time))
 
+        scenario = ""
+
         for i in range(len(waypoints)):
-            scenario += "00:00:00>DEFWPT D{id}_{i},{lat},{lon},FIX\n".format(id=id, i=i, lat=waypoints[i].y,
+            if no_time:
+                time_inv = ''
+            else:
+                time_inv = '00:00:00>'
+            scenario += "{time_inv}DEFWPT2 {id}_{i},{lat},{lon},FIX\n".format(time_inv=time_inv, id=id, i=i, lat=waypoints[i].y,
                                                                              lon=waypoints[i].x)
 
-        scenario += "{time}>CRE D{id} M600 {lat} {lon} {hdg} {alt} {spd}\n".format(id=id, lat=source.y, lon=source.x, hdg=initial_heading, alt=self.layers[layer].altitude_m * 3.281, spd=spd, time=time)
+        if no_time:
+            time_inv = ''
+        else:
+            time_inv = '{time}>'.format(time=time)
 
-        scenario += "{time}>ADDWPT D{id} D{id}_{i} {alt} {spd}\n".format(id=id, i=0, lat=waypoints[0].y,
-                                                                             lon=waypoints[0].x,
-                                                                             alt=self.layers[
-                                                                                     layer].altitude_m * 3.281,
-                                                                             spd=spd, time=time)
+        scenario += "{time_inv}ADDWPT {id} {id}_{i} {alt} {spd}\n".format(time_inv=time_inv, id=id, i=0, lat=waypoints[0].y,
+                                                                         lon=waypoints[0].x,
+                                                                         alt=self.layers[
+                                                                                 layer].altitude_m * 3.281,
+                                                                         spd=spd, time=time)
 
         last_was_turn = False
 
@@ -396,45 +417,68 @@ class RoutePlanner:
             waypoint = waypoints[i]
 
             if i < len(waypoints) - 1:
-                heading1, _, _ = geodesic.inv(waypoints[i-1].x, waypoints[i-1].y, waypoints[i].x,
-                                                     waypoints[i].y)
-                heading2, _, _ = geodesic.inv(waypoints[i].x, waypoints[i].y, waypoints[i+1].x,
-                                                     waypoints[i+1].y)
+                heading1, _, _ = geodesic.inv(waypoints[i - 1].x, waypoints[i - 1].y, waypoints[i].x,
+                                              waypoints[i].y)
+                heading2, _, _ = geodesic.inv(waypoints[i].x, waypoints[i].y, waypoints[i + 1].x,
+                                              waypoints[i + 1].y)
 
-                if self.turn_params_table.is_turn_penalized(abs(heading1 - heading2)) and (waypoints[i-1].turning or waypoints[i].turning or waypoints[i+1].turning):
+                if self.turn_params_table.is_turn_penalized(abs(heading1 - heading2)) and (
+                        waypoints[i - 1].turning or waypoints[i].turning or waypoints[i + 1].turning):
                     if not last_was_turn:
-                        scenario += "{time}>ADDWPT D{id} FLYTURN\n".format(id=id, time=time)
-                        scenario += "{time}>ADDWPT D{id} TURNSPEED {turn_speed}\n".format(id=id, turn_speed=self.turn_params_table.get_turn_speed_knots(abs(heading1 - heading2)), time=time)
+                        scenario += "{time_inv}ADDWPT {id} FLYTURN\n".format(time_inv=time_inv, id=id, time=time)
+                        scenario += "{time_inv}ADDWPT {id} TURNSPEED {turn_speed}\n".format(time_inv=time_inv, id=id,
+                                                                                              turn_speed=self.turn_params_table.get_turn_speed_knots(
+                                                                                                  abs(heading1 - heading2)),
+                                                                                              time=time)
 
                         last_was_turn = True
                 else:
                     if last_was_turn:
-                        scenario += "{time}>ADDWPT D{id} FLYBY\n".format(id=id, time=time)
+                        scenario += "{time_inv}ADDWPT {id} FLYBY\n".format(time_inv=time_inv, id=id, time=time)
                         last_was_turn = False
 
             else:
                 last_was_turn = False
-                scenario += "{time}>ADDWPT D{id} FLYBY\n".format(id=id, time=time)
+                scenario += "{time_inv}ADDWPT {id} FLYBY\n".format(time_inv=time_inv, id=id, time=time)
 
             if last_was_turn:
-                scenario += "{time}>ADDWPT D{id} D{id}_{i} {alt} {spd}\n".format(id=id, i=i, lat=waypoint.y,
+                scenario += "{time_inv}ADDWPT {id} {id}_{i} {alt} {spd}\n".format(time_inv=time_inv, id=id, i=i, lat=waypoint.y,
+                                                                                 lon=waypoint.x,
+                                                                                 alt=self.layers[
+                                                                                         layer].altitude_m * 3.281,
+                                                                                 spd=spd, time=time)
+            else:
+                scenario += "{time_inv}ADDWPT {id} {id}_{i} {alt} ,\n".format(time_inv=time_inv, id=id, i=i, lat=waypoint.y,
                                                                              lon=waypoint.x,
                                                                              alt=self.layers[
                                                                                      layer].altitude_m * 3.281,
                                                                              spd=spd, time=time)
-            else:
-                scenario += "{time}>ADDWPT D{id} D{id}_{i} {alt} ,\n".format(id=id, i=i, lat=waypoint.y,
-                                                                                     lon=waypoint.x,
-                                                                                     alt=self.layers[
-                                                                                             layer].altitude_m * 3.281,
-                                                                                     spd=spd, time=time)
 
             if not last_was_turn:
-                scenario += "{time}>RTA D{id} D{id}_{i} {time2}\n".format(id=id, i=i, time=time, time2=str(datetime.timedelta(seconds=waypoint.time)))
+                scenario += "{time_inv}RTA {id} {id}_{i} {time2}\n".format(time_inv=time_inv, id=id, i=i, time=time, time2=str(
+                    datetime.timedelta(seconds=waypoint.time)))
 
-        scenario += "{time}>D{id} ATDIST {lat} {lon} 0.01 DEL D{id}\n".format(id=id, lat=waypoints[-1].y, lon=waypoints[-1].x, time=time)
+        return scenario
 
-        scenario += "{time}>LNAV D{id} ON\n".format(id=id, time=time)
-        scenario += "{time}>VNAV D{id} ON\n".format(id=id, time=time)
+    def convert_flightplan_to_M2_scenario(self, flightplan: Flightplan, layer: int) -> str:
+        id = flightplan.id
+
+        geodesic = pyproj.Geod(ellps='WGS84')
+        waypoints = self._prepare_waypoints(flightplan)
+        source = flightplan.waypoints[0]
+        time = '0' + str(datetime.timedelta(seconds=flightplan.departure_time))
+        spd = flightplan.speed_m_s * self.M_S_TO_KNOT
+        scenario = ""
+
+        initial_heading, _, _ = geodesic.inv(flightplan.waypoints[0].x, flightplan.waypoints[0].y, waypoints[1].x, waypoints[1].y)
+
+        scenario += "{time}>CRE {id} M600 {lat} {lon} {hdg} {alt} {spd}\n".format(id=id, lat=source.y, lon=source.x, hdg=initial_heading, alt=self.layers[layer].altitude_m * 3.281, spd=spd, time=time)
+
+        scenario += self.get_flightplan_M2_waypoints(flightplan, layer)
+
+        scenario += "{time}>{id} ATDIST {lat} {lon} 0.01 DEL {id}\n".format(id=id, lat=waypoints[-1].y, lon=waypoints[-1].x, time=time)
+
+        scenario += "{time}>LNAV {id} ON\n".format(id=id, time=time)
+        scenario += "{time}>VNAV {id} ON\n".format(id=id, time=time)
 
         return scenario

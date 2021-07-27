@@ -9,7 +9,7 @@ from geomet import wkt
 from geopy import distance
 import networkx as nx
 
-from ground_routing.common import PathNotFoundException, GDP, Request, TurnParamsTable, Geofence
+from ground_routing.common import PathNotFoundException, GDP, Request, TurnParamsTable, Geofence, Flightplan
 
 
 def plot_three_points(n1, n2, n3):
@@ -352,8 +352,9 @@ class PathPlanner:
     SINK_NODE_ID = 'DESTINATION'
 
     street_network: StreetNetwork
-    permanent_flightplans: List[SNFlightplan]
-    temporary_flightplans: List[SNFlightplan]
+    permanent_sn_flightplans: List[SNFlightplan]
+    temporary_sn_flightplans: List[SNFlightplan]
+    planned_flightplans: List[Flightplan]
     timestep_s: int
     network: nx.DiGraph
     edge_length_m: float
@@ -362,19 +363,21 @@ class PathPlanner:
     def __init__(self, street_network: StreetNetwork, timestep_s: int, edge_length_m: float, default_gdp: GDP, geofences: List[Geofence] = []):
         self.street_network = street_network
         self.default_gdp = default_gdp
-        self.permanent_flightplans = []
-        self.temporary_flightplans = []
+        self.permanent_sn_flightplans = []
+        self.temporary_sn_flightplans = []
         self.timestep_s = timestep_s
         self.edge_length_m = edge_length_m
         self._geofences = geofences
 
         self.network = self.street_network.get_subdivided_network(edge_length_m)
 
+        self.planned_flightplans = []
+
     @property
     def flightplans(self):
         flightplans = []
-        flightplans.extend(self.permanent_flightplans)
-        flightplans.extend(self.temporary_flightplans)
+        flightplans.extend(self.permanent_sn_flightplans)
+        flightplans.extend(self.temporary_sn_flightplans)
         return flightplans
 
     @property
@@ -402,6 +405,20 @@ class PathPlanner:
                         position = (position_node['norm_x'], position_node['norm_y'])
                         nodes_covered_by_flightplan = [node for node, data in self.network.nodes(data=True) if abs(position[0] - data['norm_x']) < radius and abs(position[1] - data['norm_y']) < radius and squared_distance(position, (data['norm_x'], data['norm_y'])) < radius**2]
                         occupied_nodes.update(nodes_covered_by_flightplan)
+
+        for plan in self.planned_flightplans:
+            s = max(-self._request_time_uncertainty_to_ticks(request), time - plan.destination_time)
+            e = min(plan.time_uncertainty_s + 1, time - plan.departure_time + 1)
+            for time_uncertainty in range(s, e):
+                if plan.is_present_at_time_with_uncertainty(time, self._request_time_uncertainty_to_ticks(request)):
+                    radius = plan.uncertainty_radius_m + request.uncertainty_radius_m
+                    position = plan.position_at_time(time - time_uncertainty)
+                    position = (position.norm_x, position.norm_y)
+                    nodes_covered_by_flightplan = [node for node, data in self.network.nodes(data=True) if
+                                                   abs(position[0] - data['norm_x']) < radius and
+                                                   abs(position[1] - data['norm_y']) < radius and
+                                                   squared_distance(position, (data['norm_x'], data['norm_y'])) < radius ** 2]
+                    occupied_nodes.update(nodes_covered_by_flightplan)
 
         nodes_covered_by_geofences = []
         current_geofences = [x for x in self._geofences if x.exists_at_time(time)]
@@ -481,7 +498,7 @@ class PathPlanner:
         pending_movements = {}
 
         for i in range(1, max(self._request_time_to_pass_node(request), max_lookup_time) + 1):
-            occupied[i] = self._list_of_occupied_nodes_for_request(time + i, request)
+            occupied[i] = self._list_of_occupied_nodes_for_request(int(time + i), request)
             pending_movements[i] = self.list_of_pending_drone_movements(time + i)
 
         neighbours = []
@@ -517,8 +534,8 @@ class PathPlanner:
 
         for i in range(0, self._request_gdp_or_default(request).max_time + 1, self._request_gdp_or_default(request).time_step):
             weight = i * self._request_gdp_or_default(request).penalty
-            occupied = self._list_of_occupied_nodes_for_request(request.start_time + i, request)
-            node = self.time_ext_node_id(request.start_node, request.start_time + i)
+            occupied = self._list_of_occupied_nodes_for_request(int(request.start_time + i), request)
+            node = self.time_ext_node_id(request.start_node, int(request.start_time + i))
 
             if request.start_node not in occupied:
                 self._queue.put((weight, node))
@@ -558,21 +575,36 @@ class PathPlanner:
 
         path.reverse()
 
-        return path, self._nodes_weights[path[-1]]
+        weight = self._nodes_weights[path[-1]]
+
+        self.visited_nodes = None
+        self._nodes_weights = None
+        self._queue = None
+        self._previous_nodes = None
+
+        return path, weight
 
     def is_destination_reachable(self, request: SNRequest):
         return nx.has_path(self.network, request.start_node, request.destination_node)
 
-    def find_closest_node(self, x: float, y: float) -> str:
+    def find_closest_node(self, x: float, y: float, starting_node_in_subdivided_graph: bool = False, speed_m_s: float = None) -> str:
         d = distance.great_circle
-        return min([node for node, data in self.network.nodes(data=True) if data['turning']], key=lambda node: d(
-            (self.network.nodes[node]['y'], self.network.nodes[node]['x']),
+
+        if starting_node_in_subdivided_graph:
+            network = self.get_time_cost_enhanced_network(speed_m_s)
+            nodes = network.nodes()
+        else:
+            network = self.network
+            nodes = [node for node, data in self.network.nodes(data=True) if data['turning']]
+
+        return min(nodes, key=lambda node: d(
+            (network.nodes[node]['y'], network.nodes[node]['x']),
             (y, x)
         ).m)
 
-    def convert_request_to_sn(self, request: Request) -> SNRequest:
-        start_node = self.find_closest_node(request.origin[0], request.origin[1])
-        end_node = self.find_closest_node(request.destination[0], request.destination[1])
+    def convert_request_to_sn(self, request: Request, starting_node_in_subdivided_graph: bool = False) -> SNRequest:
+        start_node = self.find_closest_node(request.origin[0], request.origin[1], starting_node_in_subdivided_graph, request.speed_m_s)
+        end_node = self.find_closest_node(request.destination[0], request.destination[1], starting_node_in_subdivided_graph, request.speed_m_s)
         sn_request = SNRequest(request.id, start_node, end_node, request.departure_time, request.uncertainty_radius_m, request.speed_m_s, request.time_uncertainty_s, request.gdp)
         return sn_request
 
@@ -601,19 +633,19 @@ class PathPlanner:
         return new_flightplan
 
     def resolve_requests(self, requests: List[SNRequest]) -> List[SNFlightplan]:
-        self.temporary_flightplans = []
+        self.temporary_sn_flightplans = []
         for request in requests:
             try:
                 flightplan = self.resolve_request(request)
-                self.temporary_flightplans.append(flightplan)
+                self.temporary_sn_flightplans.append(flightplan)
             except PathNotFoundException as e:
                 print(e)
 
-        return self.temporary_flightplans
+        return self.temporary_sn_flightplans
 
     def add_flightplan(self, flightplan: SNFlightplan):
         self.list_of_pending_drone_movements.cache_clear()
-        self.permanent_flightplans.append(flightplan)
+        self.permanent_sn_flightplans.append(flightplan)
 
     @lru_cache(3)
     def get_time_cost_enhanced_network(self, speed_m_s):
