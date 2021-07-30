@@ -239,7 +239,7 @@ class Flightplan:
         return cls(request.id, waypoints, request.time_uncertainty_s, request.speed_m_s, request.uncertainty_radius_m, layer=layer)
 
     @classmethod
-    def from_sn_flightplan(cls, graph: nx.Graph, sn_flightplan: "SNFlightplan", layer: int = None):
+    def from_sn_flightplan(cls, graph: nx.Graph, sn_flightplan: "SNFlightplan", layer: int = None, no_gdp: bool = False):
         waypoints = []
 
         path = sn_flightplan.nodes
@@ -250,6 +250,13 @@ class Flightplan:
             if path[path_keys[i]] != path[path_keys[i + 1]]:
                 ground_delay = i
                 break
+
+        if no_gdp and ground_delay > 0:
+            waypoints.append(
+                cls.Waypoint(graph.nodes[path[path_keys[0]]]['x'],
+                             graph.nodes[path[path_keys[0]]]['y'],
+                             graph.nodes[path[path_keys[0]]]['norm_x'],
+                             graph.nodes[path[path_keys[0]]]['norm_y'], path_keys[0], True))
 
         previous_node_finish_time = path_keys[ground_delay]
 

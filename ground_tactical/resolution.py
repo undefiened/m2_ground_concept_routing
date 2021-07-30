@@ -33,7 +33,7 @@ def init_plugin():
 class GroundConflictResolution(ConflictResolution):
     LAYER_TOLERANCE_M = 10
     GEOFENCE_TIME_S = 120
-    FLIGHTPLAN_DELAY_S = 4
+    FLIGHTPLAN_DELAY_S = 8
 
     layers: List[Layer]
     flightplans: List[Flightplan]
@@ -198,22 +198,21 @@ class GroundConflictResolution(ConflictResolution):
 
     def reroute_other_drones(self, affected_layers: Set[int], to_deconflict: Set[str], new_geofences: List[Tuple[int, Geofence]]):
         for layer_id in affected_layers:
+            rerouted_flightplans = []
             layer = self.layers[layer_id]
             layer_flightplans = [x for x in self.flightplans if x.layer == layer_id]
 
             self.route_planner.geofences = self.layers[layer_id].path_planner.geofences
 
             for flightplan in layer_flightplans:
-                if self.flightplan_needs_rerouting(flightplan, to_deconflict, new_geofences, layer_id):
-                    idx = bs.traf.id.index(flightplan.id)
-
+                if self.flightplan_needs_rerouting(flightplan, to_deconflict, new_geofences, layer_id, rerouted_flightplans):
                     start_position = self._find_next_node(flightplan)
 
                     destination_position = flightplan.waypoints[-1].x, flightplan.waypoints[-1].y
 
                     request = Request(flightplan.id, start_position, destination_position, flightplan.time_uncertainty_s,
                                 flightplan.speed_m_s, math.floor(bs.sim.simt+self.FLIGHTPLAN_DELAY_S), flightplan.uncertainty_radius_m,
-                                GDP(1, 100, 2))
+                                GDP(1, 100, 4))
 
                     sn_request = layer.path_planner.convert_request_to_sn(request, True)
 
@@ -222,6 +221,7 @@ class GroundConflictResolution(ConflictResolution):
                         layer.path_planner.get_time_cost_enhanced_network(flightplan.speed_m_s), new_sn_flightplan, layer=layer_id
                     )
                     layer.path_planner.planned_flightplans.append(new_flightplan)
+                    rerouted_flightplans.append(new_flightplan)
 
                     self.flightplans[self._get_flightplan_idx_by_id(flightplan.id)] = new_flightplan
 
@@ -237,7 +237,7 @@ class GroundConflictResolution(ConflictResolution):
                         stack.stack(new_plan[i])
 
                     stack.stack('ADDWPT {id} FLYTURN'.format(id=flightplan.id))
-                    stack.stack('ADDWPT {id} TURNSPEED 2'.format(id=flightplan.id))
+                    stack.stack('ADDWPT {id} TURNSPEED 5'.format(id=flightplan.id))
 
                     stack.stack(new_plan[fp_starts])
                     stack.stack('ADDWPT {id} FLYBY'.format(id=flightplan.id))
@@ -250,11 +250,17 @@ class GroundConflictResolution(ConflictResolution):
                 else:
                     layer.path_planner.planned_flightplans.append(flightplan)
 
-    def flightplan_needs_rerouting(self, flightplan: Flightplan, to_deconflict: Set[str], new_geofences: List[Tuple[int, Geofence]], layer_id: int) -> bool:
+    def flightplan_needs_rerouting(self, flightplan: Flightplan, to_deconflict: Set[str], new_geofences: List[Tuple[int, Geofence]], layer_id: int, rerouted_flightplans: List[Flightplan]) -> bool:
         if flightplan.id not in to_deconflict and flightplan.id not in self.slowing_down_drones_list:
             for geofence_layer, geofence in new_geofences:
                 if geofence_layer == layer_id:
                     if self.route_planner._flightplan_intersects_geofence(flightplan, geofence):
+                        return True
+
+            for rerouted_flightplan in rerouted_flightplans:
+                intersection_in_time = self.route_planner._intersection_in_time(flightplan, rerouted_flightplan)
+                if intersection_in_time and self.route_planner._initial_intersection_check(flightplan, rerouted_flightplan):
+                    if self.route_planner._find_intersection_by_simulation(flightplan, rerouted_flightplan, intersection_in_time):
                         return True
 
         return False

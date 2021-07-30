@@ -178,7 +178,7 @@ class PlannerColoringTestCase(TestCase):
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
-        self.assertFalse(RoutePlanner._intersection_in_time(fp1, fp2))
+        self.assertFalse(RoutePlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
 
         fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
                                              flightplan=Flightplan(id='D0', waypoints=[
@@ -187,7 +187,7 @@ class PlannerColoringTestCase(TestCase):
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
-        self.assertTrue(RoutePlanner._intersection_in_time(fp1, fp2))
+        self.assertTrue(RoutePlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
 
         fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
                                              flightplan=Flightplan(id='D0', waypoints=[
@@ -196,7 +196,7 @@ class PlannerColoringTestCase(TestCase):
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
-        self.assertTrue(RoutePlanner._intersection_in_time(fp1, fp2))
+        self.assertTrue(RoutePlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
 
         fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
                                              flightplan=Flightplan(id='D0', waypoints=[
@@ -205,7 +205,7 @@ class PlannerColoringTestCase(TestCase):
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
-        self.assertTrue(RoutePlanner._intersection_in_time(fp1, fp2))
+        self.assertTrue(RoutePlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
 
         fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
                                              flightplan=Flightplan(id='D0', waypoints=[
@@ -214,7 +214,7 @@ class PlannerColoringTestCase(TestCase):
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
-        self.assertFalse(RoutePlanner._intersection_in_time(fp1, fp2))
+        self.assertFalse(RoutePlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
 
     def test_intersection_in_time_with_uncertainty(self):
         fp1 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
@@ -231,7 +231,7 @@ class PlannerColoringTestCase(TestCase):
                                              ], time_uncertainty_s=10, speed_m_s=0, uncertainty_radius_m=1),
                                              sn_request=None)
 
-        self.assertTrue(RoutePlanner._intersection_in_time(fp1, fp2))
+        self.assertTrue(RoutePlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
 
     def test_buffer_intersection(self):
         b1 = RoutePlanner._get_points_buffer([
@@ -357,9 +357,9 @@ class PlannerColoringTestCase(TestCase):
             Request('D0', (-2, 0), (1, 0), 0, 10, 0, 20, NO_GDP),
         ])
 
-        self.assertTrue(rp._initial_intersection_check(flightplans_to_color[0], flightplans_to_color[1]))
-        self.assertFalse(rp._initial_intersection_check(flightplans_to_color[1], flightplans_to_color[2]))
-        self.assertTrue(rp._initial_intersection_check(flightplans_to_color[1], flightplans_to_color[3]))
+        self.assertTrue(rp._initial_intersection_check(flightplans_to_color[0].flightplan, flightplans_to_color[1].flightplan))
+        self.assertFalse(rp._initial_intersection_check(flightplans_to_color[1].flightplan, flightplans_to_color[2].flightplan))
+        self.assertTrue(rp._initial_intersection_check(flightplans_to_color[1].flightplan, flightplans_to_color[3].flightplan))
 
     def test_simulation_intersection_without_time_uncertainty(self):
         graphml_string = """<?xml version='1.0' encoding='utf-8'?>
@@ -446,10 +446,22 @@ class PlannerColoringTestCase(TestCase):
             Request('D0', (-2, 0), (1, 0), 0, 10, -4, 10, NO_GDP),
         ])
 
-        self.assertTrue(rp._find_intersection_by_simulation(flightplans_to_color[0], flightplans_to_color[1], rp._intersection_in_time(flightplans_to_color[0], flightplans_to_color[1])))
-        self.assertFalse(rp._find_intersection_by_simulation(flightplans_to_color[1], flightplans_to_color[2], rp._intersection_in_time(flightplans_to_color[1], flightplans_to_color[2])))
-        self.assertFalse(rp._find_intersection_by_simulation(flightplans_to_color[1], flightplans_to_color[3], rp._intersection_in_time(flightplans_to_color[1], flightplans_to_color[3])))
-        self.assertTrue(rp._find_intersection_by_simulation(flightplans_to_color[1], flightplans_to_color[4], rp._intersection_in_time(flightplans_to_color[1], flightplans_to_color[4])))
+        self.assertTrue(rp._find_intersection_by_simulation(
+            flightplans_to_color[0].flightplan,
+            flightplans_to_color[1].flightplan,
+            rp._intersection_in_time(flightplans_to_color[0].flightplan, flightplans_to_color[1].flightplan)))
+        self.assertFalse(rp._find_intersection_by_simulation(
+            flightplans_to_color[1].flightplan,
+            flightplans_to_color[2].flightplan,
+            rp._intersection_in_time(flightplans_to_color[1].flightplan, flightplans_to_color[2].flightplan)))
+        self.assertFalse(rp._find_intersection_by_simulation(
+            flightplans_to_color[1].flightplan,
+            flightplans_to_color[3].flightplan,
+            rp._intersection_in_time(flightplans_to_color[1].flightplan, flightplans_to_color[3].flightplan)))
+        self.assertTrue(rp._find_intersection_by_simulation(
+            flightplans_to_color[1].flightplan,
+            flightplans_to_color[4].flightplan,
+            rp._intersection_in_time(flightplans_to_color[1].flightplan, flightplans_to_color[4].flightplan)))
 
     def test_simulation_intersection_with_time_uncertainty(self):
         graphml_string = """<?xml version='1.0' encoding='utf-8'?>
@@ -534,8 +546,14 @@ class PlannerColoringTestCase(TestCase):
             Request('D0', (0, -1), (0, 1), 1, 10, 0, 10, NO_GDP),
         ])
 
-        self.assertTrue(rp._find_intersection_by_simulation(flightplans_to_color[0], flightplans_to_color[1], rp._intersection_in_time(flightplans_to_color[0], flightplans_to_color[1])))
-        self.assertFalse(rp._find_intersection_by_simulation(flightplans_to_color[2], flightplans_to_color[1], rp._intersection_in_time(flightplans_to_color[2], flightplans_to_color[1])))
+        self.assertTrue(rp._find_intersection_by_simulation(
+            flightplans_to_color[0].flightplan,
+            flightplans_to_color[1].flightplan,
+            rp._intersection_in_time(flightplans_to_color[0].flightplan, flightplans_to_color[1].flightplan)))
+        self.assertFalse(rp._find_intersection_by_simulation(
+            flightplans_to_color[2].flightplan,
+            flightplans_to_color[1].flightplan,
+            rp._intersection_in_time(flightplans_to_color[2].flightplan, flightplans_to_color[1].flightplan)))
 
     def test_attempt_coloring(self):
         graphml_string = """<?xml version='1.0' encoding='utf-8'?>
@@ -726,17 +744,17 @@ class PlannerColoringTestCase(TestCase):
             Request('D0', (1, 0), (-1, 0), 0, 10, 10, 10, NO_GDP),
         ])
 
-        self.assertTrue(rp._find_intersection_by_simulation(flightplans_to_color[0], flightplans_to_color[1],
-                                                            rp._intersection_in_time(flightplans_to_color[0],
-                                                                                     flightplans_to_color[1])))
+        self.assertTrue(rp._find_intersection_by_simulation(flightplans_to_color[0].flightplan, flightplans_to_color[1].flightplan,
+                                                            rp._intersection_in_time(flightplans_to_color[0].flightplan,
+                                                                                     flightplans_to_color[1].flightplan)))
 
-        self.assertTrue(rp._find_intersection_by_simulation(flightplans_to_color[0], flightplans_to_color[2],
-                                                            rp._intersection_in_time(flightplans_to_color[0],
-                                                                                     flightplans_to_color[2])))
+        self.assertTrue(rp._find_intersection_by_simulation(flightplans_to_color[0].flightplan, flightplans_to_color[2].flightplan,
+                                                            rp._intersection_in_time(flightplans_to_color[0].flightplan,
+                                                                                     flightplans_to_color[2].flightplan)))
 
-        self.assertFalse(rp._find_intersection_by_simulation(flightplans_to_color[0], flightplans_to_color[3],
-                                                            rp._intersection_in_time(flightplans_to_color[0],
-                                                                                     flightplans_to_color[3])))
+        self.assertFalse(rp._find_intersection_by_simulation(flightplans_to_color[0].flightplan, flightplans_to_color[3].flightplan,
+                                                            rp._intersection_in_time(flightplans_to_color[0].flightplan,
+                                                                                     flightplans_to_color[3].flightplan)))
 
     def test_converting_sn_flightplan_with_delay(self):
         graphml_string = """<?xml version='1.0' encoding='utf-8'?>
@@ -808,6 +826,72 @@ class PlannerColoringTestCase(TestCase):
         fp = Flightplan.from_sn_flightplan(pp.get_time_cost_enhanced_network(50), sn_flightplan)
         self.assertEqual(fp.waypoints[0].time, 0)
         self.assertEqual(fp.waypoints[3].time, 3)
+
+    def test_converting_sn_flightplan_with_delay_no_gdp(self):
+        graphml_string = """<?xml version='1.0' encoding='utf-8'?>
+        <graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd">
+          <key id="d12" for="edge" attr.name="length" attr.type="string" />
+          <key id="d2" for="node" attr.name="x" attr.type="string" />
+          <key id="d1" for="node" attr.name="y" attr.type="string" />
+          <graph edgedefault="undirected">
+            <node id="l">
+              <data key="d1">0</data>
+              <data key="d2">-1</data>
+            </node>
+            <node id="ll">
+              <data key="d1">0</data>
+              <data key="d2">-2</data>
+            </node>
+            <node id="r">
+              <data key="d1">0</data>
+              <data key="d2">1</data>
+            </node>
+            <node id="c">
+              <data key="d1">0</data>
+              <data key="d2">0</data>
+            </node>
+            <node id="t">
+              <data key="d1">1</data>
+              <data key="d2">0</data>
+            </node>
+            <node id="b">
+              <data key="d1">-1</data>
+              <data key="d2">0</data>
+            </node>
+
+
+            <edge source="ll" target="l" id="0">
+              <data key="d12">40</data>
+            </edge>
+            <edge source="l" target="c" id="1">
+              <data key="d12">40</data>
+            </edge>
+            <edge source="r" target="c" id="2">
+              <data key="d12">40</data>
+            </edge>
+            <edge source="t" target="c" id="3">
+              <data key="d12">40</data>
+            </edge>
+            <edge source="b" target="c" id="4">
+              <data key="d12">40</data>
+            </edge>
+          </graph>
+        </graphml>
+        """
+        turn_params_table = TurnParamsTable([TurnParams(0, 180, 30, 0)])
+
+        sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=False,
+                                               turn_params_table=turn_params_table)
+
+        sn_flightplan = SNFlightplan('D0', [(0, 'll'), (1, 'll'), (2, 'll'), (3, 'l'), (4, 'c'), (5, 'r')], 1, 0, 0, SNRequest('D0', 'll', 'r', 0, 0, 50, 0))
+        pp = PathPlanner(sn, 1, 50, None)
+
+        fp = Flightplan.from_sn_flightplan(pp.get_time_cost_enhanced_network(50), sn_flightplan, no_gdp=True)
+        self.assertEqual(len(fp.waypoints), 5)
+        self.assertEqual(fp.waypoints[0].time, 0)
+        self.assertEqual(fp.waypoints[1].time, 2)
+        self.assertEqual(fp.waypoints[3].time, 4)
+
 
     def test_conflict_with_disk_geofence(self):
         graphml_string = """<?xml version='1.0' encoding='utf-8'?>

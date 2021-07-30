@@ -106,29 +106,29 @@ class RoutePlanner:
 
         return len(res) > 0
 
-    def _initial_intersection_check(self, route1: FlightplanToColor, route2: FlightplanToColor) -> bool:
-        buffer1 = self._get_flightplan_buffer(route1.flightplan)
-        buffer2 = self._get_flightplan_buffer(route2.flightplan)
+    def _initial_intersection_check(self, route1: Flightplan, route2: Flightplan) -> bool:
+        buffer1 = self._get_flightplan_buffer(route1)
+        buffer2 = self._get_flightplan_buffer(route2)
 
         return self._do_two_buffers_intersect(buffer1, buffer2)
 
     @staticmethod
-    def _intersection_in_time(route1: FlightplanToColor, route2: FlightplanToColor) -> Tuple[int, int]:
-        t_from = max(route1.flightplan.departure_time, route2.flightplan.departure_time)
-        t_to = min(route1.flightplan.destination_time + route1.flightplan.time_uncertainty_s, route2.flightplan.destination_time + route2.flightplan.time_uncertainty_s)
+    def _intersection_in_time(route1: Flightplan, route2: Flightplan) -> Tuple[int, int]:
+        t_from = max(route1.departure_time, route2.departure_time)
+        t_to = min(route1.destination_time + route1.time_uncertainty_s, route2.destination_time + route2.time_uncertainty_s)
 
         if t_from > t_to:
             return None
         else:
             return t_from, t_to
 
-    def _find_intersection_by_simulation(self, route1, route2, intersection_in_time):
+    def _find_intersection_by_simulation(self, route1: Flightplan, route2: Flightplan, intersection_in_time: Tuple[int, int]):
         for t in np.arange(intersection_in_time[0], intersection_in_time[1] + self.DELTA_T / 1000, self.DELTA_T):
-            pos1 = [(x.norm_x, x.norm_y) for x in route1.flightplan.position_range(t)]
-            pos2 = [(x.norm_x, x.norm_y) for x in route2.flightplan.position_range(t)]
+            pos1 = [(x.norm_x, x.norm_y) for x in route1.position_range(t)]
+            pos2 = [(x.norm_x, x.norm_y) for x in route2.position_range(t)]
 
-            buffer1 = self._get_points_buffer(pos1, route1.sn_request.uncertainty_radius_m)
-            buffer2 = self._get_points_buffer(pos2, route2.sn_request.uncertainty_radius_m)
+            buffer1 = self._get_points_buffer(pos1, route1.uncertainty_radius_m)
+            buffer2 = self._get_points_buffer(pos2, route2.uncertainty_radius_m)
 
             if self._do_two_buffers_intersect(buffer1, buffer2):
                 return True
@@ -136,9 +136,9 @@ class RoutePlanner:
         return False
 
     def _two_routes_intersect(self, route1: FlightplanToColor, route2: FlightplanToColor) -> bool:
-        intersection_in_time = self._intersection_in_time(route1, route2)
-        if intersection_in_time and self._available_layers_intersect(route1, route2) and self._initial_intersection_check(route1, route2):
-            return self._find_intersection_by_simulation(route1, route2, intersection_in_time)
+        intersection_in_time = self._intersection_in_time(route1.flightplan, route2.flightplan)
+        if intersection_in_time and self._available_layers_intersect(route1, route2) and self._initial_intersection_check(route1.flightplan, route2.flightplan):
+            return self._find_intersection_by_simulation(route1.flightplan, route2.flightplan, intersection_in_time)
         else:
             return False
 
