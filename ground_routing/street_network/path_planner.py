@@ -388,6 +388,14 @@ class PathPlanner:
         self._list_of_occupied_nodes_for_request.cache_clear()
         self._geofences.append(geofence)
 
+    def add_geofences(self, geofences: List[Geofence]):
+        self._list_of_occupied_nodes_for_request.cache_clear()
+        self._geofences.extend(geofences)
+
+    def clear_geofences(self):
+        self._list_of_occupied_nodes_for_request.cache_clear()
+        self._geofences = []
+
     @lru_cache(200)
     def _list_of_occupied_nodes_for_request(self, time: int, request: SNRequest) -> Set[str]:
         def squared_distance(p1, p2):
@@ -591,14 +599,12 @@ class PathPlanner:
         d = distance.great_circle
 
         if starting_node_in_subdivided_graph:
-            network = self.get_time_cost_enhanced_network(speed_m_s)
-            nodes = network.nodes()
+            nodes = self.network.nodes()
         else:
-            network = self.network
             nodes = [node for node, data in self.network.nodes(data=True) if data['turning']]
 
         return min(nodes, key=lambda node: d(
-            (network.nodes[node]['y'], network.nodes[node]['x']),
+            (self.network.nodes[node]['y'], self.network.nodes[node]['x']),
             (y, x)
         ).m)
 

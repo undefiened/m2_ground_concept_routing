@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Tuple, List, TYPE_CHECKING
+from typing import Tuple, List, TYPE_CHECKING, Set
 
 import networkx as nx
 import pyclipper
@@ -289,6 +289,10 @@ class Flightplan:
 
 class Geofence(ABC):
     time: Tuple[int, int]
+    involved_drones: Set[str]
+
+    def __init__(self):
+        self.involved_drones = set()
 
     @abstractmethod
     def contains_point(self, point: Tuple[float, float], offset_m: float) -> bool:
@@ -307,6 +311,7 @@ class DiskGeofence(Geofence):
     center: Tuple[float, float]
 
     def __init__(self, time: Tuple[int, int], radius_m: float, center: Tuple[float, float]):
+        super().__init__()
         self.time = time
         self.radius_m = radius_m
         self.center = center
