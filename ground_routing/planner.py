@@ -317,6 +317,7 @@ class RoutePlanner:
         header += "00:00:00>CDMETHOD GROUNDCONFLICTDETECTION\n"
         header += "00:00:00>PAN 48.223775 16.337976\n"
         header += "00:00:00>RESO GROUNDCONFLICTRESOLUTION\n"
+        header += "00:00:00>DTLOOK 4\n"
 
 
         header += "00:00:00>ZOOM 50\n"

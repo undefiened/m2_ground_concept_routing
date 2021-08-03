@@ -286,6 +286,9 @@ class Flightplan:
     def is_present_at_time_with_uncertainty(self, time: int, additional_uncertainty: int) -> bool:
         return time >= self.departure_time - additional_uncertainty and time <= self.destination_time + self.time_uncertainty_s
 
+    def __str__(self):
+        return 'Flightplan(id={id}, departure={dep}, destination={dest}, layer_id={layer})'.format(id=self.id, dep=self.departure_time, dest=self.destination_time, layer=self.layer)
+
 
 class Geofence(ABC):
     time: Tuple[int, int]

@@ -114,6 +114,6 @@ class GroundConflictDetection(ConflictDetection):
         swlos = (dist < rpz) * (np.abs(dalt) < hpz)
         lospairs = [(ownship.id[i], ownship.id[j]) for i, j in zip(*np.where(swlos))]
 
-        return lospairs, lospairs, inconf, tcpamax, \
+        return confpairs, lospairs, inconf, tcpamax, \
                qdr[swconfl], dist[swconfl], np.sqrt(dcpa2[swconfl]), \
                tcpa[swconfl], tinconf[swconfl]
