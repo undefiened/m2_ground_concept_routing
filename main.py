@@ -53,8 +53,8 @@ def run_street_network_vienn():
 
     requests = []
 
-    # interesting_intents = range(len(intents))
-    interesting_intents = range(5)
+    interesting_intents = range(len(intents))
+    # interesting_intents = range(5)
     # interesting_intents = [9, ]
     gdp = GDP(10, 60, 1)
 
