@@ -5,9 +5,13 @@ import queue
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Tuple, List, Dict, Set, Union
+
+import numpy as np
+import scipy
 from geomet import wkt
 from geopy import distance
 import networkx as nx
+from scipy.spatial import KDTree
 
 from ground_routing.common import PathNotFoundException, GDP, Request, TurnParamsTable, Geofence, Flightplan
 
@@ -396,36 +400,52 @@ class PathPlanner:
         self._list_of_occupied_nodes_for_request.cache_clear()
         self._geofences = []
 
-    @lru_cache(200)
-    def _list_of_occupied_nodes_for_request(self, time: int, request: SNRequest) -> Set[str]:
-        def squared_distance(p1, p2):
-            return (p1[0] - p2[0])**2 + (p1[1] - p2[1])**2
+    @lru_cache(1)
+    def _get_network_kd_tree(self) -> Tuple[KDTree, List[str]]:
+        nodes = list(self.network.nodes(data=True))
+        coords_list = np.array([(x[1]['norm_x'], x[1]['norm_y']) for x in nodes])
+        names_list = [x[0] for x in nodes]
 
+        res = KDTree(coords_list)
+
+        return res, names_list
+
+    def _get_nodes_within_radius(self, center: Tuple[float, float], radius_m: float) -> List[str]:
+        kd_tree, nodes = self._get_network_kd_tree()
+
+        res = kd_tree.query_ball_point(center, radius_m)
+
+        return [nodes[x] for x in res]
+
+
+    @lru_cache(200)
+    def _list_of_occupied_nodes_for_request(self, time: int, request_uncertainty_radius_m: float, request_time_uncertainty_ticks: int) -> Set[str]:
         occupied_nodes = set()
 
         for plan in self.flightplans:
-            for time_uncertainty in range(max(-self._request_time_uncertainty_to_ticks(request), time - plan.end_time),
+            for time_uncertainty in range(max(-request_time_uncertainty_ticks, time - plan.end_time),
                                           min(plan.time_uncertainty + 1, time - plan.start_time + 1)):
-                if plan.is_present_at_time_with_uncertainty(time, self._request_time_uncertainty_to_ticks(request)):
-                    radius = plan.uncertainty_radius_m + request.uncertainty_radius_m
+                if plan.is_present_at_time_with_uncertainty(time, request_time_uncertainty_ticks):
+                    radius = plan.uncertainty_radius_m + request_uncertainty_radius_m
                     for position_node in plan.position_at_time(time - time_uncertainty):
                         position_node = self.network.nodes[position_node]
                         position = (position_node['norm_x'], position_node['norm_y'])
-                        nodes_covered_by_flightplan = [node for node, data in self.network.nodes(data=True) if abs(position[0] - data['norm_x']) < radius and abs(position[1] - data['norm_y']) < radius and squared_distance(position, (data['norm_x'], data['norm_y'])) < radius**2]
+
+                        nodes_covered_by_flightplan = self._get_nodes_within_radius(position, radius)
+
                         occupied_nodes.update(nodes_covered_by_flightplan)
 
         for plan in self.planned_flightplans:
-            s = max(-self._request_time_uncertainty_to_ticks(request), time - plan.destination_time)
+            s = max(-request_time_uncertainty_ticks, time - plan.destination_time)
             e = min(plan.time_uncertainty_s + 1, time - plan.departure_time + 1)
             for time_uncertainty in range(s, e):
-                if plan.is_present_at_time_with_uncertainty(time, self._request_time_uncertainty_to_ticks(request)):
-                    radius = plan.uncertainty_radius_m + request.uncertainty_radius_m
+                if plan.is_present_at_time_with_uncertainty(time, request_time_uncertainty_ticks):
+                    radius = plan.uncertainty_radius_m + request_uncertainty_radius_m
                     position = plan.position_at_time(time - time_uncertainty)
                     position = (position.norm_x, position.norm_y)
-                    nodes_covered_by_flightplan = [node for node, data in self.network.nodes(data=True) if
-                                                   abs(position[0] - data['norm_x']) < radius and
-                                                   abs(position[1] - data['norm_y']) < radius and
-                                                   squared_distance(position, (data['norm_x'], data['norm_y'])) < radius ** 2]
+
+                    nodes_covered_by_flightplan = self._get_nodes_within_radius(position, radius)
+
                     occupied_nodes.update(nodes_covered_by_flightplan)
 
         nodes_covered_by_geofences = []
@@ -433,7 +453,7 @@ class PathPlanner:
         if len(current_geofences) > 0:
             for node, data in self.network.nodes(data=True):
                 for geofence in current_geofences:
-                    if geofence.contains_point((data['norm_x'], data['norm_y']), request.uncertainty_radius_m):
+                    if geofence.contains_point((data['norm_x'], data['norm_y']), request_uncertainty_radius_m):
                         nodes_covered_by_geofences.append(node)
                         break
 
@@ -493,26 +513,28 @@ class PathPlanner:
             return self.network[node1][node2]['length']/1000000
 
     def _get_all_neighbours(self, node_id: str, time: int, request: SNRequest) -> List[Tuple[str, float]]:
-        nodes = list(self.network.neighbors(node_id))
-
-        max_lookup_time = self._request_time_to_pass_node(request)
+        nodes = list(self._tmp_time_cost_enhanced_network.neighbors(node_id))
+        nodes_costs = {}
 
         for node in nodes:
-            edge_data = self.network.edges[node_id, node]
-            if edge_data['time_cost'] > max_lookup_time:
-                max_lookup_time = edge_data['time_cost']
+            nodes_costs[node] = self._tmp_time_cost_enhanced_network._succ[node_id][node]['time_cost']
+
+        max_lookup_time = self._time_to_pass_node_with_speed(request.speed_m_s)
+
+        for node in nodes:
+            if nodes_costs[node] > max_lookup_time:
+                max_lookup_time = nodes_costs[node]
 
         occupied = {}
         pending_movements = {}
 
-        for i in range(1, max(self._request_time_to_pass_node(request), max_lookup_time) + 1):
-            occupied[i] = self._list_of_occupied_nodes_for_request(int(time + i), request)
+        for i in range(1, max(self._time_to_pass_node_with_speed(request.speed_m_s), max_lookup_time) + 1):
+            occupied[i] = self._list_of_occupied_nodes_for_request(int(time + i), request.uncertainty_radius_m, self._request_time_uncertainty_to_ticks(request))
             pending_movements[i] = self.list_of_pending_drone_movements(time + i)
 
         neighbours = []
         for node in nodes:
-            edge_data = self._tmp_time_cost_enhanced_network.edges[node_id, node]
-            time_cost = edge_data['time_cost']
+            time_cost = nodes_costs[node]
             available = True
 
             for i in range(1, time_cost + 1):
@@ -531,6 +553,7 @@ class PathPlanner:
         self._tmp_time_cost_enhanced_network = self.get_time_cost_enhanced_network(request.speed_m_s)
         self._list_of_occupied_nodes_for_request.cache_clear()
         self._request_time_to_pass_node.cache_clear()
+        self._time_to_pass_node_with_speed.cache_clear()
         self.list_of_pending_drone_movements.cache_clear()
 
         self.visited_nodes = set()
@@ -542,7 +565,7 @@ class PathPlanner:
 
         for i in range(0, self._request_gdp_or_default(request).max_time + 1, self._request_gdp_or_default(request).time_step):
             weight = i * self._request_gdp_or_default(request).penalty
-            occupied = self._list_of_occupied_nodes_for_request(int(request.start_time + i), request)
+            occupied = self._list_of_occupied_nodes_for_request(int(request.start_time + i), request.uncertainty_radius_m, self._request_time_uncertainty_to_ticks(request))
             node = self.time_ext_node_id(request.start_node, int(request.start_time + i))
 
             if request.start_node not in occupied:
@@ -632,7 +655,7 @@ class PathPlanner:
         for i, node_id in enumerate(path):
             points.append((self._get_node_time(node_id), self._get_node_id(node_id)))
 
-        new_flightplan = SNFlightplan(id=request.id, nodes=points, speed_node=math.floor(1 / self._request_time_to_pass_node(request)),
+        new_flightplan = SNFlightplan(id=request.id, nodes=points, speed_node=math.floor(1 / self._time_to_pass_node_with_speed(request.speed_m_s)),
                                       time_uncertainty=self._request_time_uncertainty_to_ticks(request), radius_m=request.uncertainty_radius_m, request=request)
         new_flightplan.weight = weight
 
@@ -651,6 +674,7 @@ class PathPlanner:
 
     def add_flightplan(self, flightplan: SNFlightplan):
         self.list_of_pending_drone_movements.cache_clear()
+        self._list_of_occupied_nodes_for_request.cache_clear()
         self.permanent_sn_flightplans.append(flightplan)
 
     @lru_cache(3)
@@ -667,4 +691,5 @@ class PathPlanner:
     def _clear_cache(self):
         self._list_of_occupied_nodes_for_request.cache_clear()
         self._request_time_to_pass_node.cache_clear()
+        self._time_to_pass_node_with_speed.cache_clear()
         self.list_of_pending_drone_movements.cache_clear()

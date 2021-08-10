@@ -696,11 +696,11 @@ class ShortestPathInNetworkTestCase(TestCase):
 
         pp.add_flightplan(SNFlightplan(id='D0', nodes=[(0, '1'), (1, '3'), (2, '4')], speed_node=1, time_uncertainty=5, radius_m=1, request=None))
         request = SNRequest('D0', '1', '4', 1, 1, 10, 0)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(3, request)), 3)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(4, request)), 3)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(5, request)), 3)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(6, request)), 2)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(7, request)), 1)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(3, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 3)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(4, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 3)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(5, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 3)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(6, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 2)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(7, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 1)
 
         pp.resolve_requests([request, ])
 
@@ -755,11 +755,11 @@ class ShortestPathInNetworkTestCase(TestCase):
 
         pp.add_flightplan(SNFlightplan(id='D0', nodes=[(1, 'l'), (2, 'c'), (3, 'r')], speed_node=1, time_uncertainty=0, radius_m=1, request=None))
         request = SNRequest('D0', 't', 'b', 0, 1, 10, 5)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(0, request)), 3)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(1, request)), 3)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(2, request)), 2)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(3, request)), 1)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(4, request)), 0)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(0, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 3)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(1, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 3)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(2, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 2)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(3, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 1)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(4, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 0)
 
         pp.resolve_requests([request, ])
 
@@ -814,16 +814,16 @@ class ShortestPathInNetworkTestCase(TestCase):
 
         pp.add_flightplan(SNFlightplan(id='D0', nodes=[(1, 'l'), (2, 'c'), (3, 'r')], speed_node=1, time_uncertainty=5, radius_m=1, request=None))
         request = SNRequest('D0', 't', 'b', 0, 1, 10, 5)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(0, request)), 3)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(1, request)), 3)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(2, request)), 3)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(3, request)), 3)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(4, request)), 3)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(5, request)), 3)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(6, request)), 3)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(7, request)), 2)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(8, request)), 1)
-        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(9, request)), 0)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(0, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 3)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(1, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 3)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(2, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 3)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(3, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 3)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(4, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 3)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(5, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 3)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(6, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 3)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(7, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 2)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(8, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 1)
+        self.assertEqual(len(pp._list_of_occupied_nodes_for_request(9, request.uncertainty_radius_m, pp._request_time_uncertainty_to_ticks(request))), 0)
 
         pp.resolve_requests([request, ])
 
@@ -862,15 +862,15 @@ class ShortestPathInNetworkTestCase(TestCase):
         sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=True, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=1000, default_gdp=NO_GDP)
         pp.add_flightplan(SNFlightplan(id='D0', nodes=[(0, '1'), (1, '2'), (2, '3')], speed_node=1, time_uncertainty=0, radius_m=50, request=None))
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(0, SNRequest('D0', '1', '3', 0, 50, 10, 0)), {'1'})
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(0, SNRequest('D0', '1', '3', 0, 85, 10, 0)), {'1', '2'})
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(1, SNRequest('D0', '1', '3', 0, 700, 10, 0)), {'1', '2'})
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(1, SNRequest('D0', '1', '3', 0, 900, 10, 0)), {'1', '2', '3'})
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(0, 50, 0), {'1'})
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(0, 85, 0), {'1', '2'})
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(1, 700, 0), {'1', '2'})
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(1, 900, 0), {'1', '2', '3'})
 
         pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=10, default_gdp=NO_GDP)
         pp.add_flightplan(
             SNFlightplan(id='D0', nodes=[(0, '1'), (1, '2'), (2, '3')], speed_node=1, time_uncertainty=0, radius_m=50, request=None))
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(0, SNRequest('D0', '1', '3', 0, 50, 10, 0)), {'1',
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(0, 50, 0), {'1',
                                                                                                       '1_2_0', '1_2_1', '1_2_2',
                                                                                                       '1_2_3', '1_2_4', '1_2_5',
                                                                                                       '1_2_6', '1_2_7', '1_2_8',
@@ -879,7 +879,7 @@ class ShortestPathInNetworkTestCase(TestCase):
         pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=50, default_gdp=NO_GDP)
         pp.add_flightplan(
             SNFlightplan(id='D0', nodes=[(0, '1'), (1, '2'), (2, '3')], speed_node=1, time_uncertainty=0, radius_m=50, request=None))
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(0, SNRequest('D0', '1', '3', 0, 250, 10, 0)), {'1_2_0', '2_3_2', '2', '2_3_0', '2_3_1', '1_2_1', '1'})
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(0, 250, 0), {'1_2_0', '2_3_2', '2', '2_3_0', '2_3_1', '1_2_1', '1'})
 
 
 class ShortestPathWithTurnNodesTestCase(TestCase):
@@ -969,10 +969,10 @@ class ShortestPathWithTurnNodesTestCase(TestCase):
         pp.add_flightplan(fp)
         self.assertEqual(15, fp.end_time)
 
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(0, SNRequest('D0', '1', '3', 0, 0.1, 10, 0)), {'l'})
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(4, SNRequest('D0', '1', '3', 0, 0.1, 10, 0)), {'r@c', 'l@c', 't@c', 'b@c'})
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(5, SNRequest('D0', '1', '3', 0, 0.1, 10, 0)), {'r@c', 'l@c', 't@c', 'b@c'})
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(6, SNRequest('D0', '1', '3', 0, 0.1, 10, 0)), {'r@c', 'l@c', 't@c', 'b@c'})
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(0, 0.1, 0), {'l'})
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(4, 0.1, 0), {'r@c', 'l@c', 't@c', 'b@c'})
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(5, 0.1, 0), {'r@c', 'l@c', 't@c', 'b@c'})
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(6, 0.1, 0), {'r@c', 'l@c', 't@c', 'b@c'})
 
     def test_time_delay(self):
         graphml_string = """<?xml version='1.0' encoding='utf-8'?>
@@ -1060,12 +1060,12 @@ class ShortestPathWithTurnNodesTestCase(TestCase):
         pp.add_flightplan(fp)
         self.assertEqual(15, fp.end_time)
 
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(0, SNRequest('D0', '1', '3', 0, 0.1, 10, 0)), {'l'})
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(4, SNRequest('D0', '1', '3', 0, 0.1, 10, 0)), {'l@c', 'b@c', 't@c', 'l_l@c_1', 'r@c', 'l_l@c_0', 'l_l@c_2'})
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(5, SNRequest('D0', '1', '3', 0, 0.1, 10, 0)), {'l@c', 'b@c', 't@c', 'l_l@c_1', 'r@c', 'l_l@c_2'})
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(6, SNRequest('D0', '1', '3', 0, 0.1, 10, 0)), {'l@c', 'b@c', 't@c', 'r@c', 'l_l@c_2'})
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(7, SNRequest('D0', '1', '3', 0, 0.1, 10, 0)), {'l@c', 'b@c', 't@c', 'r@c'})
-        self.assertEqual(pp._list_of_occupied_nodes_for_request(8, SNRequest('D0', '1', '3', 0, 0.1, 10, 0)), {'l@c', 'b@c', 't@c', 'r@c'})
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(0, 0.1, 0), {'l'})
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(4, 0.1, 0), {'l@c', 'b@c', 't@c', 'l_l@c_1', 'r@c', 'l_l@c_0', 'l_l@c_2'})
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(5, 0.1, 0), {'l@c', 'b@c', 't@c', 'l_l@c_1', 'r@c', 'l_l@c_2'})
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(6, 0.1, 0), {'l@c', 'b@c', 't@c', 'r@c', 'l_l@c_2'})
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(7, 0.1, 0), {'l@c', 'b@c', 't@c', 'r@c'})
+        self.assertEqual(pp._list_of_occupied_nodes_for_request(8, 0.1, 0), {'l@c', 'b@c', 't@c', 'r@c'})
 
     def test_two_drones(self):
         graphml_string = """<?xml version='1.0' encoding='utf-8'?>
@@ -1234,23 +1234,23 @@ class GeofencesTestCase(TestCase):
         pp = PathPlanner(street_network=sn, timestep_s=1, edge_length_m=40,
                          default_gdp=NO_GDP, geofences=[DiskGeofence((1, 4), 10, (0, 0)), DiskGeofence((10, 14), 10, (-35, 0))])
 
-        res = pp._list_of_occupied_nodes_for_request(0, SNRequest('', '', 0, 0, 0, 0))
+        res = pp._list_of_occupied_nodes_for_request(0, 0, 0)
         self.assertEqual(len(res), 0)
 
-        res = pp._list_of_occupied_nodes_for_request(1, SNRequest('', '', 0, 0, 0, 0))
+        res = pp._list_of_occupied_nodes_for_request(1, 0, 0)
         self.assertEqual(len(res), 4)
 
-        res = pp._list_of_occupied_nodes_for_request(2, SNRequest('', '', 0, 0, 0, 0))
+        res = pp._list_of_occupied_nodes_for_request(2, 0, 0)
         self.assertEqual(len(res), 4)
 
-        res = pp._list_of_occupied_nodes_for_request(3, SNRequest('', '', 0, 0, 0, 0))
+        res = pp._list_of_occupied_nodes_for_request(3, 0, 0)
         self.assertEqual(len(res), 4)
 
-        res = pp._list_of_occupied_nodes_for_request(4, SNRequest('', '', 0, 0, 0, 0))
+        res = pp._list_of_occupied_nodes_for_request(4, 0, 0)
         self.assertEqual(len(res), 4)
 
-        res = pp._list_of_occupied_nodes_for_request(5, SNRequest('', '', 0, 0, 0, 0))
+        res = pp._list_of_occupied_nodes_for_request(5, 0, 0)
         self.assertEqual(len(res), 0)
 
-        res = pp._list_of_occupied_nodes_for_request(10, SNRequest('', '', 0, 0, 0, 0))
+        res = pp._list_of_occupied_nodes_for_request(10, 0, 0)
         self.assertEqual(len(res), 1)

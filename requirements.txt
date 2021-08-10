@@ -6,3 +6,4 @@ pyproj
 pyclipper
 Cython
 mip
+scipy

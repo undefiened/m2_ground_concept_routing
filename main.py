@@ -39,9 +39,9 @@ def read_M2_flight_intents_file(filename):
 
 
 def run_street_network_vienn():
-    CACHE = True
+    CACHE = False
     intents = read_M2_flight_intents_file('../Test_Scenario/M2_Test_FlightPlan.txt')
-    intents = read_M2_flight_intents_file('../Test_Scenario/M2_Tactical_Test.txt')
+    # intents = read_M2_flight_intents_file('../Test_Scenario/M2_Tactical_Test.txt')
 
     turn_costs = TurnParamsTable([
         TurnParams(0, 30, 30, 0),
@@ -54,7 +54,7 @@ def run_street_network_vienn():
     requests = []
 
     # interesting_intents = range(len(intents))
-    interesting_intents = range(3)
+    interesting_intents = range(5)
     # interesting_intents = [9, ]
     gdp = GDP(10, 60, 1)
 
