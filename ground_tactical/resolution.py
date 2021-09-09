@@ -9,8 +9,8 @@ from geopy import distance
 import bluesky as bs
 import numpy as np
 from ground_routing.common import GDP, DiskGeofence, Geofence, Request, PathNotFoundException
-from ground_routing.planner import Layer, Flightplan, RoutePlanner
-from ground_routing.street_network.path_planner import PathPlanner
+from ground_routing.planner import Layer, Flightplan, PathPlanner
+from ground_routing.street_network.path_planner import SNPathPlanner
 
 from bluesky import stack
 from bluesky.core import timed_function
@@ -46,7 +46,7 @@ class GroundConflictResolution(ConflictResolution):
     geofenced_conflicts_list: Set[Tuple[str, str]]
     resolved_conflicts: Set[Tuple[str, str]]
     slowed_down_drones_list: Set[str]
-    route_planner: RoutePlanner
+    route_planner: PathPlanner
     flightplans_waiting: Set[str]
 
     def __init__(self):
@@ -63,6 +63,8 @@ class GroundConflictResolution(ConflictResolution):
         self.slowed_down_drones_list = set()
         self.resolved_conflicts = set()
         self.flightplans_waiting = set()
+
+        self.failed_to_reroute_conflicting_drones = set()
 
     def _get_original_drone_id(self, id: str):
         return int(id[1:])
@@ -145,35 +147,38 @@ class GroundConflictResolution(ConflictResolution):
         newgscapped = ownship.ap.tas
         newvs = ownship.ap.vs
 
-        drones_in_conflicts = set([x for i, x in enumerate(bs.traf.id) if bs.traf.cr.active[i]])
-
-        # self._clear_lists_from_resolved_conflicts(drones_in_conflicts)
-
         affected_layers = set()
         to_deconflict = set()
         new_geofences = []
 
+        newgscapped, new_geofences, affected_layers = self.slow_down_and_geofence_conflicting_drones(affected_layers, conf, new_geofences, newgscapped)
+
+        self.reroute_other_drones(affected_layers, to_deconflict, new_geofences)
+
+        return newtrack, newgscapped, newvs, alt
+
+    def slow_down_and_geofence_conflicting_drones(self, affected_layers, conf, new_geofences, newgscapped):
         for idx in list(itertools.compress(range(len(bs.traf.cr.active)), bs.traf.cr.active)):
             # Find the pairs in which IDX is involved in a conflict
             ids_pairs = [x for x in conf.confpairs if x[0] == bs.traf.id[idx]]
             idx_pairs = [(bs.traf.id.index(x[0]), bs.traf.id.index(x[1])) for x in ids_pairs]
 
-            if bs.traf.id[idx] not in self.slowed_down_drones_list and bs.traf.id[idx] not in self.slowing_down_drones_list:
+            if bs.traf.id[idx] not in self.slowed_down_drones_list and bs.traf.id[
+                idx] not in self.slowing_down_drones_list:
                 self.slowing_down_drones_list.add(bs.traf.id[idx])
 
             if bs.traf.id[idx] in self.slowing_down_drones_list:
                 newgscapped[idx] = 0
 
             for i, pair in enumerate(ids_pairs):
-                if pair not in self.geofenced_conflicts_list and (pair[1], pair[0]) not in self.geofenced_conflicts_list:
+                if pair not in self.geofenced_conflicts_list and (
+                pair[1], pair[0]) not in self.geofenced_conflicts_list:
                     affected_layer, new_geofence = self._add_temporary_geofence(pair, idx_pairs[i])
                     affected_layers.add(affected_layer)
                     new_geofences.append((affected_layer, new_geofence))
                     self.geofenced_conflicts_list.add(pair)
 
-        self.reroute_other_drones(affected_layers, to_deconflict, new_geofences)
-
-        return newtrack, newgscapped, newvs, alt
+        return newgscapped, new_geofences, affected_layers
 
     @timed_function()
     def slow_down_conflicting_drones(self):
@@ -187,13 +192,10 @@ class GroundConflictResolution(ConflictResolution):
         affected_layers = set()
 
         for flightplan_id in self.slowing_down_drones_list:
-            idx = self._get_flightplan_idx_by_id(flightplan_id)
-            if flightplan_id not in self.slowed_down_drones_list:
-                if bs.traf.tas[idx] < 0.1:  # the drone has stopped
-                    self.slowed_down_drones_list.add(bs.traf.id[idx])
+            self.continue_slowing_down_until_stopped(flightplan_id)
 
         for geofenced_conflict in self.geofenced_conflicts_list:
-            if geofenced_conflict[0] in self.slowed_down_drones_list and geofenced_conflict[1] in self.slowed_down_drones_list and geofenced_conflict not in self.resolved_conflicts:
+            if self._both_drones_stopped(geofenced_conflict) and geofenced_conflict not in self.resolved_conflicts:
                 for id in geofenced_conflict:
                     idx = self._get_flightplan_idx_by_id(id)
                     to_deconflict.add(bs.traf.id[idx])
@@ -205,7 +207,17 @@ class GroundConflictResolution(ConflictResolution):
                     self.resolved_conflicts.add(geofenced_conflict)
 
         if to_deconflict and affected_layers:
-            self.reroute_conflict_drones(affected_layers, to_deconflict)
+            self.reroute_conflicting_drones(affected_layers, to_deconflict)
+
+    def _both_drones_stopped(self, geofenced_conflict):
+        return geofenced_conflict[0] in self.slowed_down_drones_list and geofenced_conflict[
+            1] in self.slowed_down_drones_list
+
+    def continue_slowing_down_until_stopped(self, flightplan_id):
+        idx = self._get_flightplan_idx_by_id(flightplan_id)
+        if flightplan_id not in self.slowed_down_drones_list:
+            if bs.traf.tas[idx] < 0.1:  # the drone has stopped
+                self.slowed_down_drones_list.add(bs.traf.id[idx])
 
     @timed_function()
     def slow_down_waiting_drones(self):
@@ -239,21 +251,9 @@ class GroundConflictResolution(ConflictResolution):
 
             for flightplan in layer_flightplans:
                 if self.flightplan_needs_rerouting(flightplan, to_deconflict, new_geofences, layer_id, rerouted_flightplans):
+                    request = self._create_replanning_request_for_other_drone(flightplan)
 
-                    if flightplan.id in bs.traf.id:
-                        start_position = self._find_next_node(flightplan)
-
-                        destination_position = flightplan.waypoints[-1].x, flightplan.waypoints[-1].y
-
-                        request = Request(flightplan.id, start_position, destination_position, self.TIME_UNCERTAINTY_AFTER_REPLANNING_S,
-                                    flightplan.speed_m_s, math.floor(bs.sim.simt+self.FLIGHTPLAN_DELAY_S), flightplan.uncertainty_radius_m,
-                                    GDP(1, 100, 4))
-                    else:
-                        request = next(x for x in self.requests if x.id == flightplan.id)
-
-                    sn_request = layer.path_planner.convert_request_to_sn(request, True)
-
-                    new_sn_flightplan = layer.path_planner.resolve_request(sn_request)
+                    new_sn_flightplan = layer.path_planner.resolve_request(layer.path_planner.convert_request_to_sn(request, True))
                     new_flightplan = Flightplan.from_sn_flightplan(
                         layer.path_planner.get_time_cost_enhanced_network(flightplan.speed_m_s), new_sn_flightplan, layer=layer_id
                     )
@@ -265,31 +265,25 @@ class GroundConflictResolution(ConflictResolution):
 
                     self.flightplans[self._get_flightplan_idx_by_id(flightplan.id)] = new_flightplan
 
-                    stack.stack('DELRTE {}'.format(flightplan.id))
-
-                    new_plan = self.route_planner.get_flightplan_M2_waypoints(new_flightplan, layer_id, no_time=True)
-
-                    new_plan = new_plan.split('\n')
-
-                    fp_starts = min([i for i, x in enumerate(new_plan) if not x.startswith('DEFWPT2')])
-
-                    for i in range(fp_starts):
-                        stack.stack(new_plan[i])
-
-                    stack.stack('ADDWPT {id} FLYTURN'.format(id=flightplan.id))
-                    stack.stack('ADDWPT {id} TURNSPEED 5'.format(id=flightplan.id))
-
-                    stack.stack(new_plan[fp_starts])
-                    stack.stack('ADDWPT {id} FLYBY'.format(id=flightplan.id))
-
-                    for command in new_plan[fp_starts+1:]:
-                        stack.stack(command)
-
-                    stack.stack("LNAV {id} ON\n".format(id=flightplan.id))
-                    stack.stack("VNAV {id} ON\n".format(id=flightplan.id))
+                    self.enter_new_flightplan_to_sim(flightplan, layer_id, new_flightplan)
                 else:
                     if flightplan.id not in self.slowed_down_drones_list and flightplan.id not in self.slowing_down_drones_list:
                         layer.path_planner.planned_flightplans.append(flightplan)
+
+    def _create_replanning_request_for_other_drone(self, flightplan):
+        if flightplan.id in bs.traf.id:
+            start_position = self._find_next_node(flightplan)
+
+            destination_position = flightplan.waypoints[-1].x, flightplan.waypoints[-1].y
+
+            request = Request(flightplan.id, start_position, destination_position,
+                              self.TIME_UNCERTAINTY_AFTER_REPLANNING_S,
+                              flightplan.speed_m_s, math.floor(bs.sim.simt + self.FLIGHTPLAN_DELAY_S),
+                              flightplan.uncertainty_radius_m,
+                              GDP(1, 100, 4))
+        else:
+            request = next(x for x in self.requests if x.id == flightplan.id)
+        return request
 
     def flightplan_needs_rerouting(self, flightplan: Flightplan, to_deconflict: Set[str], new_geofences: List[Tuple[int, Geofence]], layer_id: int, rerouted_flightplans: List[Flightplan]) -> bool:
         if flightplan.id not in to_deconflict and flightplan.id not in self.slowing_down_drones_list:
@@ -313,7 +307,7 @@ class GroundConflictResolution(ConflictResolution):
 
         starting_positions = []
 
-        network = self.route_planner.top_layer.path_planner.network
+        network = self.route_planner.top_layer.path_planner.subdivided_network
 
         for flightplan in flightplans:
             idx = self._get_flightplan_idx_by_id(flightplan.id)
@@ -326,15 +320,13 @@ class GroundConflictResolution(ConflictResolution):
             ).m)
 
             closest_position = (network.nodes[closest]['x'], network.nodes[closest]['y'])
-            # stack.stack('DEFWPT S{id},{lat},{lon},FIX'.format(id=flightplan.id, lat=closest_position[1]+0.00001, lon=closest_position[0]+0.00001))
             starting_positions.append(closest_position)
 
         return starting_positions
 
-    def reroute_conflict_drones(self, affected_layers: Set[int], to_deconflict: Set[str]):
+    def reroute_conflicting_drones(self, affected_layers: Set[int], to_deconflict: Set[str]):
         # TODO: run another round if failed to reroute some drone
         for layer_id in affected_layers:
-            layer = self.layers[layer_id]
             layer_flightplans = [x for x in self.flightplans if x.layer == layer_id and x.id in to_deconflict]
             flightplans_starting_positions = self._find_starting_positions_for_deconfliction(layer_flightplans)
 
@@ -345,79 +337,91 @@ class GroundConflictResolution(ConflictResolution):
             for i in range(NUMBER_OF_DECONFLICTION_ATTEMPTS):
                 for flightplan_i, flightplan in enumerate(layer_flightplans):
                     if flightplan.id not in rerouted_flightplans:
-                        tmp_geofences = [DiskGeofence(
-                            time=(math.floor(bs.sim.simt), math.floor(bs.sim.simt + self.GEOFENCE_TIME_S)),
-                            radius_m=0.1,
-                            center=layer.path_planner.street_network.coordinate_to_norm(
-                                flightplans_starting_positions[k][1],
-                                flightplans_starting_positions[k][0]
-                            )
-                        ) for k, x in enumerate(layer_flightplans) if x.id != flightplan.id and x.id not in rerouted_flightplans]
-
-                        start_position = flightplans_starting_positions[flightplan_i]
-
-                        destination_position = flightplan.waypoints[-1].x, flightplan.waypoints[-1].y
-
-                        request = Request(flightplan.id, start_position, destination_position, self.TIME_UNCERTAINTY_AFTER_REPLANNING_S,
-                                          flightplan.speed_m_s, math.floor(bs.sim.simt + self.FLIGHTPLAN_DELAY_S),
-                                          flightplan.uncertainty_radius_m,
-                                          GDP(1, math.floor(self.GEOFENCE_TIME_S), 1000))
-
-                        sn_request = layer.path_planner.convert_request_to_sn(request, True)
+                        sn_request = self._compute_sn_request_for_rerouting(flightplan, flightplan_i,
+                                                                            flightplans_starting_positions, layer_id)
 
                         try:
-                            old_geofences = layer.path_planner.geofences
-                            layer.path_planner.clear_geofences()
-                            layer.path_planner.add_geofences([x for x in old_geofences if flightplan.id not in x.involved_drones])
-                            layer.path_planner.add_geofences(tmp_geofences)
+                            self._prepare_path_planner(flightplan, flightplans_starting_positions,
+                                                                       layer_flightplans, layer_id,
+                                                                       rerouted_flightplans)
 
-                            new_sn_flightplan = layer.path_planner.resolve_request(sn_request)
-                            new_flightplan = Flightplan.from_sn_flightplan(
-                                layer.path_planner.get_time_cost_enhanced_network(flightplan.speed_m_s), new_sn_flightplan,
-                                layer=layer_id
-                            )
-                            layer.path_planner.planned_flightplans.append(new_flightplan)
+                            new_flightplan = self._compute_new_flightplan(flightplan, layer_id, sn_request)
                             print(new_flightplan)
 
-                            if new_flightplan.departure_time > bs.sim.simt + self.HOVERING_TRESHOLD:
-                                self.flightplans_waiting.add(new_flightplan.id)
-                            else:
-                                self._return_drone_to_flying(flightplan.id)
+                            self._stop_rerouted_drone_if_needed(flightplan, new_flightplan)
 
-                            layer.path_planner.clear_geofences()
-                            layer.path_planner.add_geofences(old_geofences)
+                            self._return_old_geofences(layer_id, flightplan)
                             rerouted_flightplans.add(new_flightplan.id)
 
                             self.flightplans[self._get_flightplan_idx_by_id(flightplan.id)] = new_flightplan
 
-                            stack.stack('DELRTE {}'.format(flightplan.id))
-
-                            new_plan = self.route_planner.get_flightplan_M2_waypoints(new_flightplan, layer_id,
-                                                                                      no_time=True)
-
-                            new_plan = new_plan.split('\n')
-
-                            # for command in new_plan:
-                            #     stack.stack(command)
-
-                            fp_starts = min([i for i, x in enumerate(new_plan) if not x.startswith('DEFWPT2')])
-
-                            for i in range(fp_starts):
-                                stack.stack(new_plan[i])
-
-                            stack.stack('ADDWPT {id} FLYTURN'.format(id=flightplan.id))
-                            stack.stack('ADDWPT {id} TURNSPEED 5'.format(id=flightplan.id))
-
-                            stack.stack(new_plan[fp_starts])
-                            stack.stack('ADDWPT {id} FLYBY'.format(id=flightplan.id))
-
-                            for command in new_plan[fp_starts+1:]:
-                                stack.stack(command)
-
-                            stack.stack("LNAV {id} ON\n".format(id=flightplan.id))
-                            stack.stack("VNAV {id} ON\n".format(id=flightplan.id))
+                            self.enter_new_flightplan_to_sim(flightplan, layer_id, new_flightplan)
                         except PathNotFoundException:
                             print('Failed to reroute {} on pass {}'.format(flightplan.id, i))
+
+            for flightplan in layer_flightplans:
+                if flightplan.id not in rerouted_flightplans:
+                    self.failed_to_reroute_conflicting_drones.add(flightplan.id)
+
+    def _compute_sn_request_for_rerouting(self, flightplan, flightplan_i, flightplans_starting_positions, layer_id):
+        start_position = flightplans_starting_positions[flightplan_i]
+        destination_position = flightplan.waypoints[-1].x, flightplan.waypoints[-1].y
+        request = Request(flightplan.id, start_position, destination_position, self.TIME_UNCERTAINTY_AFTER_REPLANNING_S,
+                          flightplan.speed_m_s, math.floor(bs.sim.simt + self.FLIGHTPLAN_DELAY_S),
+                          flightplan.uncertainty_radius_m,
+                          GDP(1, math.floor(self.GEOFENCE_TIME_S), 1000))
+        sn_request = self.layers[layer_id].path_planner.convert_request_to_sn(request, True)
+        return sn_request
+
+    def _stop_rerouted_drone_if_needed(self, flightplan, new_flightplan):
+        if new_flightplan.departure_time > bs.sim.simt + self.HOVERING_TRESHOLD:
+            self.flightplans_waiting.add(new_flightplan.id)
+        else:
+            self._return_drone_to_flying(flightplan.id)
+
+    def _compute_new_flightplan(self, flightplan, layer_id, sn_request):
+        new_sn_flightplan = self.layers[layer_id].path_planner.resolve_request(sn_request)
+        new_flightplan = Flightplan.from_sn_flightplan(
+            self.layers[layer_id].path_planner.get_time_cost_enhanced_network(flightplan.speed_m_s), new_sn_flightplan,
+            layer=layer_id
+        )
+        self.layers[layer_id].path_planner.planned_flightplans.append(new_flightplan)
+        return new_flightplan
+
+    def _return_old_geofences(self, layer_id, flightplan):
+        self.layers[layer_id].path_planner.enable_geofences_involving_drone(flightplan.id)
+        self.layers[layer_id].path_planner.clear_temporary_geofences()
+
+    def _prepare_path_planner(self, flightplan, flightplans_starting_positions, layer_flightplans, layer_id,
+                              rerouted_flightplans):
+        tmp_geofences = [DiskGeofence(
+            time=(math.floor(bs.sim.simt), math.floor(bs.sim.simt + self.GEOFENCE_TIME_S)),
+            radius_m=0.1,
+            center=self.layers[layer_id].path_planner.street_network.coordinate_to_norm(
+                flightplans_starting_positions[k][1],
+                flightplans_starting_positions[k][0]
+            )
+        ) for k, x in enumerate(layer_flightplans) if
+            x.id != flightplan.id and x.id not in rerouted_flightplans]
+        self.layers[layer_id].path_planner.disable_geofences_involving_drone(flightplan.id)
+        self.layers[layer_id].path_planner.add_temporary_geofences(tmp_geofences)
+
+    def enter_new_flightplan_to_sim(self, flightplan, layer_id, new_flightplan):
+        stack.stack('DELRTE {}'.format(flightplan.id))
+        new_plan = self.route_planner.get_flightplan_M2_waypoints(new_flightplan, layer_id,
+                                                                  no_time=True)
+        new_plan = new_plan.split('\n')
+        fp_starts = min([i for i, x in enumerate(new_plan) if not x.startswith('DEFWPT2')])
+        for i in range(fp_starts):
+            stack.stack(new_plan[i])
+        stack.stack('ADDWPT {id} FLYTURN'.format(id=flightplan.id))
+        stack.stack('ADDWPT {id} TURNSPEED 5'.format(id=flightplan.id))
+        stack.stack(new_plan[fp_starts])
+        stack.stack('ADDWPT {id} FLYBY'.format(id=flightplan.id))
+        for command in new_plan[fp_starts + 1:]:
+            stack.stack(command)
+        stack.stack("LNAV {id} ON\n".format(id=flightplan.id))
+        stack.stack("VNAV {id} ON\n".format(id=flightplan.id))
 
     def _point_drone_towards_next_waypoint(self, idx):
         iwpid = bs.traf.ap.route[idx].findact(idx)

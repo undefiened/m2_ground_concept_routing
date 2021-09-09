@@ -1,8 +1,8 @@
 from unittest import TestCase
 
 from ground_routing.common import Flightplan, Request, TurnParamsTable, TurnParams, NO_GDP, DiskGeofence
-from ground_routing.planner import RoutePlanner, Layer
-from ground_routing.street_network.path_planner import PathPlanner, StreetNetwork, SNRequest, SNFlightplan
+from ground_routing.planner import PathPlanner, Layer
+from ground_routing.street_network.path_planner import SNPathPlanner, StreetNetwork, SNRequest, SNFlightplan
 
 
 class PlannerColoringTestCase(TestCase):
@@ -135,142 +135,142 @@ class PlannerColoringTestCase(TestCase):
         sn = StreetNetwork.from_graphml_string(graphml_string, recompute_lengths=True, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         layers = [
-            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
-            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=SNPathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=SNPathPlanner(sn, 1, 10, NO_GDP)),
         ]
-        rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
-        colors = rp._color_flightplans([RoutePlanner.FlightplanToColor([0, 1], [], None, None), RoutePlanner.FlightplanToColor([0, 1], [], None, None)], [(0, 1), ])
+        rp = PathPlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
+        colors = rp._color_flightplans([PathPlanner.FlightplanToColor([0, 1], [], None, None), PathPlanner.FlightplanToColor([0, 1], [], None, None)], [(0, 1), ])
         self.assertEqual(colors, [0, 1])
 
-        colors = rp._color_flightplans([RoutePlanner.FlightplanToColor([0, 1], [], None, None),
-                                        RoutePlanner.FlightplanToColor([0, 1], [], None, None),
-                                        RoutePlanner.FlightplanToColor([0, 1], [], None, None),], [(0, 1), (0, 2)])
+        colors = rp._color_flightplans([PathPlanner.FlightplanToColor([0, 1], [], None, None),
+                                        PathPlanner.FlightplanToColor([0, 1], [], None, None),
+                                        PathPlanner.FlightplanToColor([0, 1], [], None, None), ], [(0, 1), (0, 2)])
         self.assertIn(colors, [[0, 1, 1], [1, 0, 0]])
 
-        colors = rp._color_flightplans([RoutePlanner.FlightplanToColor([0, ], [], None, None)], [])
+        colors = rp._color_flightplans([PathPlanner.FlightplanToColor([0, ], [], None, None)], [])
         self.assertEqual(colors, [0, ])
 
-        colors = rp._color_flightplans([RoutePlanner.FlightplanToColor([1, ], [], None, None)], [])
+        colors = rp._color_flightplans([PathPlanner.FlightplanToColor([1, ], [], None, None)], [])
         self.assertEqual(colors, [1, ])
 
-        colors = rp._color_flightplans([RoutePlanner.FlightplanToColor([0, 1], [], None, None),
-                                        RoutePlanner.FlightplanToColor([0, 1], [], None, None),
-                                        RoutePlanner.FlightplanToColor([1, ], [], None, None), ], [(0, 1), (0, 2)])
+        colors = rp._color_flightplans([PathPlanner.FlightplanToColor([0, 1], [], None, None),
+                                        PathPlanner.FlightplanToColor([0, 1], [], None, None),
+                                        PathPlanner.FlightplanToColor([1, ], [], None, None), ], [(0, 1), (0, 2)])
         self.assertEqual(colors, [0, 1, 1])
 
-        colors = rp._color_flightplans([RoutePlanner.FlightplanToColor([1], [], None, None),
-                                        RoutePlanner.FlightplanToColor([1], [], None, None),
-                                        RoutePlanner.FlightplanToColor([1, ], [], None, None), ], [(0, 1), (0, 2)])
+        colors = rp._color_flightplans([PathPlanner.FlightplanToColor([1], [], None, None),
+                                        PathPlanner.FlightplanToColor([1], [], None, None),
+                                        PathPlanner.FlightplanToColor([1, ], [], None, None), ], [(0, 1), (0, 2)])
         self.assertEqual(colors, None)
 
     def test_intersection_in_time(self):
-        fp1 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(id='D0', waypoints=[
+        fp1 = PathPlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
+                                            flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 0),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 10),
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
-                                             sn_request=None)
+                                            sn_request=None)
 
-        fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(id='D0', waypoints=[
+        fp2 = PathPlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
+                                            flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 11),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 20),
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
-                                             sn_request=None)
+                                            sn_request=None)
 
-        self.assertFalse(RoutePlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
+        self.assertFalse(PathPlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
 
-        fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(id='D0', waypoints=[
+        fp2 = PathPlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
+                                            flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 1),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 5),
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
-                                             sn_request=None)
+                                            sn_request=None)
 
-        self.assertTrue(RoutePlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
+        self.assertTrue(PathPlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
 
-        fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(id='D0', waypoints=[
+        fp2 = PathPlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
+                                            flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, -3),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 3),
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
-                                             sn_request=None)
+                                            sn_request=None)
 
-        self.assertTrue(RoutePlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
+        self.assertTrue(PathPlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
 
-        fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(id='D0', waypoints=[
+        fp2 = PathPlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
+                                            flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 5),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 15),
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
-                                             sn_request=None)
+                                            sn_request=None)
 
-        self.assertTrue(RoutePlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
+        self.assertTrue(PathPlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
 
-        fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(id='D0', waypoints=[
+        fp2 = PathPlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
+                                            flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, -10),
                                                  Flightplan.Waypoint(0, 0, 0, 0, -5),
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
-                                             sn_request=None)
+                                            sn_request=None)
 
-        self.assertFalse(RoutePlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
+        self.assertFalse(PathPlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
 
     def test_intersection_in_time_with_uncertainty(self):
-        fp1 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(id='D0', waypoints=[
+        fp1 = PathPlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
+                                            flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 10),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 20),
                                              ], time_uncertainty_s=0, speed_m_s=0, uncertainty_radius_m=1),
-                                             sn_request=None)
+                                            sn_request=None)
 
-        fp2 = RoutePlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
-                                             flightplan=Flightplan(id='D0', waypoints=[
+        fp2 = PathPlanner.FlightplanToColor(available_layers=[0, ], path=['1', '2', '3'],
+                                            flightplan=Flightplan(id='D0', waypoints=[
                                                  Flightplan.Waypoint(0, 0, 0, 0, 0),
                                                  Flightplan.Waypoint(0, 0, 0, 0, 9),
                                              ], time_uncertainty_s=10, speed_m_s=0, uncertainty_radius_m=1),
-                                             sn_request=None)
+                                            sn_request=None)
 
-        self.assertTrue(RoutePlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
+        self.assertTrue(PathPlanner._intersection_in_time(fp1.flightplan, fp2.flightplan))
 
     def test_buffer_intersection(self):
-        b1 = RoutePlanner._get_points_buffer([
+        b1 = PathPlanner._get_points_buffer([
             (0, 0),
             (10, 0),
         ], 10)
 
-        b2 = RoutePlanner._get_points_buffer([
+        b2 = PathPlanner._get_points_buffer([
             (0, 2),
             (10, 2),
         ], 10)
 
-        b3 = RoutePlanner._get_points_buffer([
+        b3 = PathPlanner._get_points_buffer([
             (0, 21),
             (10, 21),
         ], 10)
 
-        self.assertTrue(RoutePlanner._do_two_buffers_intersect(b1, b2))
-        self.assertFalse(RoutePlanner._do_two_buffers_intersect(b1, b3))
-        self.assertTrue(RoutePlanner._do_two_buffers_intersect(b2, b3))
+        self.assertTrue(PathPlanner._do_two_buffers_intersect(b1, b2))
+        self.assertFalse(PathPlanner._do_two_buffers_intersect(b1, b3))
+        self.assertTrue(PathPlanner._do_two_buffers_intersect(b2, b3))
 
-        b1 = RoutePlanner._get_points_buffer([
+        b1 = PathPlanner._get_points_buffer([
             (0, 0),
             (10, 0),
         ], 10)
 
-        b2 = RoutePlanner._get_points_buffer([
+        b2 = PathPlanner._get_points_buffer([
             (5, 18),
             (5, 30),
         ], 10)
 
-        self.assertTrue(RoutePlanner._do_two_buffers_intersect(b1, b2))
+        self.assertTrue(PathPlanner._do_two_buffers_intersect(b1, b2))
 
-        b2 = RoutePlanner._get_points_buffer([
+        b2 = PathPlanner._get_points_buffer([
             (5, 20),
             (5, 30),
         ], 10)
 
-        self.assertFalse(RoutePlanner._do_two_buffers_intersect(b1, b2))
+        self.assertFalse(PathPlanner._do_two_buffers_intersect(b1, b2))
 
     def test_flightplans_intersection(self):
         graphml_string = """<?xml version='1.0' encoding='utf-8'?>
@@ -345,10 +345,10 @@ class PlannerColoringTestCase(TestCase):
 
 
         layers = [
-            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
-            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=SNPathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=SNPathPlanner(sn, 1, 10, NO_GDP)),
         ]
-        rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
+        rp = PathPlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         flightplans_to_color = rp._prepare_flightplans_to_color([
             Request('D0', (-1, 0), (1, 0), 0, 10, 0, 20, NO_GDP),
@@ -433,10 +433,10 @@ class PlannerColoringTestCase(TestCase):
         sn.original_network.nodes['ll']['norm_y'] = 0
 
         layers = [
-            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
-            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=SNPathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=SNPathPlanner(sn, 1, 10, NO_GDP)),
         ]
-        rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
+        rp = PathPlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         flightplans_to_color = rp._prepare_flightplans_to_color([
             Request('D0', (-1, 0), (1, 0), 0, 10, 0, 10, NO_GDP),
@@ -535,10 +535,10 @@ class PlannerColoringTestCase(TestCase):
         sn.original_network.nodes['ll']['norm_y'] = 0
 
         layers = [
-            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
-            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=SNPathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=SNPathPlanner(sn, 1, 10, NO_GDP)),
         ]
-        rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
+        rp = PathPlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         flightplans_to_color = rp._prepare_flightplans_to_color([
             Request('D0', (0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),
@@ -627,10 +627,10 @@ class PlannerColoringTestCase(TestCase):
         sn.original_network.nodes['ll']['norm_y'] = 0
 
         layers = [
-            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
-            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=SNPathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=SNPathPlanner(sn, 1, 10, NO_GDP)),
         ]
-        rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
+        rp = PathPlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
         requests = [Request('D0', (0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),
                     Request('D0', (-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP),]
         res, flightplans = rp._attempt_coloring(requests)
@@ -646,10 +646,10 @@ class PlannerColoringTestCase(TestCase):
         self.assertIn(res, [[0, 0], [1, 1]]) # making sure that we are using as few layers as possible
 
         layers = [
-            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=SNPathPlanner(sn, 1, 10, NO_GDP)),
         ]
 
-        rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
+        rp = PathPlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         requests = [Request('D0', (0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),
                     Request('D0', (-2, 0), (1, 0), 0, 10, 0, 10, NO_GDP), ]
@@ -732,10 +732,10 @@ class PlannerColoringTestCase(TestCase):
         sn.original_network.nodes['ll']['norm_y'] = 0
 
         layers = [
-            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
-            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=SNPathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=SNPathPlanner(sn, 1, 10, NO_GDP)),
         ]
-        rp = RoutePlanner(layers=layers, turn_params_table=turn_params_table)
+        rp = PathPlanner(layers=layers, turn_params_table=turn_params_table)
 
         flightplans_to_color = rp._prepare_flightplans_to_color([
             Request('D0', (-1, 0), (0, -1), 0, 10, 0, 10, NO_GDP),
@@ -813,7 +813,7 @@ class PlannerColoringTestCase(TestCase):
                                                turn_params_table=turn_params_table)
 
         sn_flightplan = SNFlightplan('D0', [(0, 'll'), (1, 'll'), (2, 'l'), (3, 'c'), (4, 'r')], 1, 0, 0, SNRequest('D0', 'll', 'r', 0, 0, 50, 0))
-        pp = PathPlanner(sn, 1, 50, None)
+        pp = SNPathPlanner(sn, 1, 50, None)
 
         fp = Flightplan.from_sn_flightplan(pp.get_time_cost_enhanced_network(50), sn_flightplan)
         self.assertEqual(fp.waypoints[0].time, 1)
@@ -821,7 +821,7 @@ class PlannerColoringTestCase(TestCase):
 
         sn_flightplan = SNFlightplan('D0', [(0, 'll'), (1, 'l'), (2, 'c'), (3, 'r')], 1, 0, 0,
                                      SNRequest('D0', 'll', 'r', 0, 0, 50, 0))
-        pp = PathPlanner(sn, 1, 50, None)
+        pp = SNPathPlanner(sn, 1, 50, None)
 
         fp = Flightplan.from_sn_flightplan(pp.get_time_cost_enhanced_network(50), sn_flightplan)
         self.assertEqual(fp.waypoints[0].time, 0)
@@ -884,7 +884,7 @@ class PlannerColoringTestCase(TestCase):
                                                turn_params_table=turn_params_table)
 
         sn_flightplan = SNFlightplan('D0', [(0, 'll'), (1, 'll'), (2, 'll'), (3, 'l'), (4, 'c'), (5, 'r')], 1, 0, 0, SNRequest('D0', 'll', 'r', 0, 0, 50, 0))
-        pp = PathPlanner(sn, 1, 50, None)
+        pp = SNPathPlanner(sn, 1, 50, None)
 
         fp = Flightplan.from_sn_flightplan(pp.get_time_cost_enhanced_network(50), sn_flightplan, no_gdp=True)
         self.assertEqual(len(fp.waypoints), 5)
@@ -966,10 +966,10 @@ class PlannerColoringTestCase(TestCase):
         sn.original_network.nodes['ll']['norm_y'] = 0
 
         layers = [
-            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
-            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=PathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=10, type=Layer.Type.NETWORK, path_planner=SNPathPlanner(sn, 1, 10, NO_GDP)),
+            Layer(altitude_m=20, type=Layer.Type.NETWORK, path_planner=SNPathPlanner(sn, 1, 10, NO_GDP)),
         ]
-        rp = RoutePlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
+        rp = PathPlanner(layers=layers, turn_params_table=TurnParamsTable([TurnParams(0, 180, 30, 0)]))
 
         flightplans_to_color = rp._prepare_flightplans_to_color([
             Request('D0', (0, -1), (0, 1), 10, 10, 0, 10, NO_GDP),

@@ -1,7 +1,7 @@
 import simplejson
 import numpy as np
 
-from main import CityMap, PathPlanner, GDP, Request, HexHelper
+from main import CityMap, SNPathPlanner, GDP, Request, HexHelper
 from ground_routing.hexagonal import _is_feasible_coordinate
 
 
@@ -22,10 +22,10 @@ def generate_random_requests(number_of_requests_to_generate, time_span, gdp, rad
         }
 
         obstacles = city_map.obstacles()
-        planner = PathPlanner(obstacles=obstacles, map_width=width, map_height=height,
-                              default_drone_radius_m=radius, hex_radius_m=1,
-                              gdp=GDP(max_time=data['gdp']['max_time'], penalty=data['gdp']['penalty']),
-                              city_map=city_map)
+        planner = SNPathPlanner(obstacles=obstacles, map_width=width, map_height=height,
+                                default_drone_radius_m=radius, hex_radius_m=1,
+                                gdp=GDP(max_time=data['gdp']['max_time'], penalty=data['gdp']['penalty']),
+                                city_map=city_map)
 
         for i in range(number_of_requests_to_generate):
             good_request = False

@@ -351,7 +351,7 @@ class StreetNetwork:
         return subdivided_network
 
 
-class PathPlanner:
+class SNPathPlanner:
     SOURCE_NODE_ID = 'SOURCE'
     SINK_NODE_ID = 'DESTINATION'
 
@@ -360,7 +360,7 @@ class PathPlanner:
     temporary_sn_flightplans: List[SNFlightplan]
     planned_flightplans: List[Flightplan]
     timestep_s: int
-    network: nx.DiGraph
+    subdivided_network: nx.DiGraph
     edge_length_m: float
     _geofences: List[Geofence]
 
@@ -372,8 +372,10 @@ class PathPlanner:
         self.timestep_s = timestep_s
         self.edge_length_m = edge_length_m
         self._geofences = geofences
+        self._temporary_geofences = []
+        self._disabled_geofences = []
 
-        self.network = self.street_network.get_subdivided_network(edge_length_m)
+        self.subdivided_network = self.street_network.get_subdivided_network(edge_length_m)
 
         self.planned_flightplans = []
 
@@ -386,7 +388,7 @@ class PathPlanner:
 
     @property
     def geofences(self):
-        return self._geofences
+        return self._geofences + self._temporary_geofences
 
     def add_geofence(self, geofence: Geofence):
         self._list_of_occupied_nodes_for_request.cache_clear()
@@ -399,10 +401,43 @@ class PathPlanner:
     def clear_geofences(self):
         self._list_of_occupied_nodes_for_request.cache_clear()
         self._geofences = []
+        self._temporary_geofences = []
+
+    def add_temporary_geofence(self, geofence: Geofence):
+        self._list_of_occupied_nodes_for_request.cache_clear()
+        self._temporary_geofences.append(geofence)
+
+    def add_temporary_geofences(self, geofences: List[Geofence]):
+        self._list_of_occupied_nodes_for_request.cache_clear()
+        self._temporary_geofences.extend(geofences)
+
+    def clear_temporary_geofences(self):
+        self._list_of_occupied_nodes_for_request.cache_clear()
+        self._temporary_geofences = []
+
+    def disable_geofences_involving_drone(self, flightplan_id: str):
+        self._list_of_occupied_nodes_for_request.cache_clear()
+        self._disabled_geofences.extend([x for x in self._geofences if flightplan_id in x.involved_drones])
+        self._geofences = [x for x in self._geofences if flightplan_id not in x.involved_drones]
+
+    def enable_all_geofences(self):
+        self._list_of_occupied_nodes_for_request.cache_clear()
+        self._geofences.extend(self._disabled_geofences)
+        self._disabled_geofences = []
+
+    def disable_all_geofences(self):
+        self._list_of_occupied_nodes_for_request.cache_clear()
+        self._disabled_geofences = [x for x in self._geofences]
+        self._geofences = []
+
+    def enable_geofences_involving_drone(self, flightplan_id: str):
+        self._list_of_occupied_nodes_for_request.cache_clear()
+        self._geofences.extend([x for x in self._disabled_geofences if flightplan_id in x.involved_drones])
+        self._disabled_geofences = [x for x in self._disabled_geofences if flightplan_id not in x.involved_drones]
 
     @lru_cache(1)
     def _get_network_kd_tree(self) -> Tuple[KDTree, List[str]]:
-        nodes = list(self.network.nodes(data=True))
+        nodes = list(self.subdivided_network.nodes(data=True))
         coords_list = np.array([(x[1]['norm_x'], x[1]['norm_y']) for x in nodes])
         names_list = [x[0] for x in nodes]
 
@@ -428,7 +463,7 @@ class PathPlanner:
                 if plan.is_present_at_time_with_uncertainty(time, request_time_uncertainty_ticks):
                     radius = plan.uncertainty_radius_m + request_uncertainty_radius_m
                     for position_node in plan.position_at_time(time - time_uncertainty):
-                        position_node = self.network.nodes[position_node]
+                        position_node = self.subdivided_network.nodes[position_node]
                         position = (position_node['norm_x'], position_node['norm_y'])
 
                         nodes_covered_by_flightplan = self._get_nodes_within_radius(position, radius)
@@ -449,9 +484,9 @@ class PathPlanner:
                     occupied_nodes.update(nodes_covered_by_flightplan)
 
         nodes_covered_by_geofences = []
-        current_geofences = [x for x in self._geofences if x.exists_at_time(time)]
+        current_geofences = [x for x in self.geofences if x.exists_at_time(time)]
         if len(current_geofences) > 0:
-            for node, data in self.network.nodes(data=True):
+            for node, data in self.subdivided_network.nodes(data=True):
                 for geofence in current_geofences:
                     if geofence.contains_point((data['norm_x'], data['norm_y']), request_uncertainty_radius_m):
                         nodes_covered_by_geofences.append(node)
@@ -510,7 +545,7 @@ class PathPlanner:
         if node1 == node2:
             return 0
         else:
-            return self.network[node1][node2]['length']/1000000
+            return self.subdivided_network[node1][node2]['length'] / 1000000
 
     def _get_all_neighbours(self, node_id: str, time: int, request: SNRequest) -> List[Tuple[str, float]]:
         nodes = list(self._tmp_time_cost_enhanced_network.neighbors(node_id))
@@ -616,18 +651,18 @@ class PathPlanner:
         return path, weight
 
     def is_destination_reachable(self, request: SNRequest):
-        return nx.has_path(self.network, request.start_node, request.destination_node)
+        return nx.has_path(self.subdivided_network, request.start_node, request.destination_node)
 
     def find_closest_node(self, x: float, y: float, starting_node_in_subdivided_graph: bool = False, speed_m_s: float = None) -> str:
         d = distance.great_circle
 
         if starting_node_in_subdivided_graph:
-            nodes = self.network.nodes()
+            nodes = self.subdivided_network.nodes()
         else:
-            nodes = [node for node, data in self.network.nodes(data=True) if data['turning']]
+            nodes = [node for node, data in self.subdivided_network.nodes(data=True) if data['turning']]
 
         return min(nodes, key=lambda node: d(
-            (self.network.nodes[node]['y'], self.network.nodes[node]['x']),
+            (self.subdivided_network.nodes[node]['y'], self.subdivided_network.nodes[node]['x']),
             (y, x)
         ).m)
 
@@ -679,7 +714,7 @@ class PathPlanner:
 
     @lru_cache(3)
     def get_time_cost_enhanced_network(self, speed_m_s):
-        new_network = copy.deepcopy(self.network)
+        new_network = copy.deepcopy(self.subdivided_network)
 
         for u, v in new_network.edges:
             edge = new_network.edges[u, v]

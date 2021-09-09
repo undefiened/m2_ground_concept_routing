@@ -13,7 +13,7 @@ from networkx import NetworkXNoPath
 
 from ground_routing.common import Request, Flightplan, TurnParamsTable, PathNotFoundException, Geofence, \
     PCO_SCALING_FACTOR
-from ground_routing.street_network.path_planner import PathPlanner as SNPathPlanner, SNRequest
+from ground_routing.street_network.path_planner import SNPathPlanner as SNPathPlanner, SNRequest
 from pyclipper import *
 from mip import Model, xsum, minimize, BINARY
 import pyproj
@@ -38,7 +38,7 @@ class Layer:
     path_planner: SNPathPlanner = None
 
 
-class RoutePlanner:
+class PathPlanner:
     """
     Only street network layers are supported at the time
     """

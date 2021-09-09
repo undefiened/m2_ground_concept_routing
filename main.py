@@ -6,8 +6,8 @@ from typing import Tuple
 # from hexagonal.misc_functions import HexCoordinate
 # from hexagonal.path_planner import CityMap, Request, PathPlanner
 from ground_routing.common import Request, GDP, TurnParamsTable, TurnParams
-from ground_routing.street_network.path_planner import PathPlanner, StreetNetwork
-from ground_routing.planner import Layer, RoutePlanner
+from ground_routing.street_network.path_planner import SNPathPlanner, StreetNetwork
+from ground_routing.planner import Layer, PathPlanner
 
 
 def read_M2_flight_intents_file(filename):
@@ -63,12 +63,12 @@ def run_street_network_vienn():
         requests.append(request)
 
     layers = [
-        Layer(0, Layer.Type.NETWORK, PathPlanner(sn, 1, spd_m_s, gdp)),
+        Layer(0, Layer.Type.NETWORK, SNPathPlanner(sn, 1, spd_m_s, gdp)),
         # Layer(50, Layer.Type.NETWORK, PathPlanner(sn, 1, spd_m_s, gdp)),
         # Layer(100, Layer.Type.NETWORK, PathPlanner(sn, 1, spd_m_s, gdp)),
     ]
 
-    rp = RoutePlanner(layers, turn_costs)
+    rp = PathPlanner(layers, turn_costs)
 
     if CACHE:
         if not os.path.isfile('cache.pickle'):
