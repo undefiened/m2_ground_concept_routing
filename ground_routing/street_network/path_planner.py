@@ -483,18 +483,25 @@ class SNPathPlanner:
 
                     occupied_nodes.update(nodes_covered_by_flightplan)
 
-        nodes_covered_by_geofences = []
+        nodes_covered_by_geofences = set()
         current_geofences = [x for x in self.geofences if x.exists_at_time(time)]
-        if len(current_geofences) > 0:
-            for node, data in self.subdivided_network.nodes(data=True):
-                for geofence in current_geofences:
-                    if geofence.contains_point((data['norm_x'], data['norm_y']), request_uncertainty_radius_m):
-                        nodes_covered_by_geofences.append(node)
-                        break
+        for geofence in current_geofences:
+            covered_points = self._get_nodes_covered_by_geofence(geofence, request_uncertainty_radius_m)
+            nodes_covered_by_geofences.update(covered_points)
 
         occupied_nodes.update(nodes_covered_by_geofences)
 
         return occupied_nodes
+
+    @lru_cache(50)
+    def _get_nodes_covered_by_geofence(self, geofence: Geofence, uncertainty_radius_m: float) -> List[str]:
+        covered_nodes = []
+
+        for node, data in self.subdivided_network.nodes(data=True):
+            if geofence.contains_point((data['norm_x'], data['norm_y']), uncertainty_radius_m):
+                covered_nodes.append(node)
+
+        return covered_nodes
 
     @lru_cache(200)
     def list_of_pending_drone_movements(self, time: int) -> List[Tuple[str, str]]:

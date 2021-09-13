@@ -5,7 +5,7 @@ from typing import Tuple, List, TYPE_CHECKING, Set
 
 import networkx as nx
 import pyclipper
-from pyclipper import PyclipperOffset, scale_to_clipper, scale_from_clipper
+from pyclipper import PyclipperOffset, scale_to_clipper, scale_from_clipper, Pyclipper
 
 if TYPE_CHECKING:
     from ground_routing.street_network import SNFlightplan
@@ -294,8 +294,9 @@ class Geofence(ABC):
     time: Tuple[int, int]
     involved_drones: Set[str]
 
-    def __init__(self):
+    def __init__(self, time: Tuple[int, int]):
         self.involved_drones = set()
+        self.time = time
 
     @abstractmethod
     def contains_point(self, point: Tuple[float, float], offset_m: float) -> bool:
@@ -308,16 +309,25 @@ class Geofence(ABC):
     def exists_at_time(self, time: int) -> bool:
         return self.time[0] <= time <= self.time[1]
 
+    @abstractmethod
+    def __eq__(self, other):
+        pass
+
+    @abstractmethod
+    def __hash__(self):
+        pass
+
 
 class DiskGeofence(Geofence):
     radius_m: float
     center: Tuple[float, float]
 
     def __init__(self, time: Tuple[int, int], radius_m: float, center: Tuple[float, float]):
-        super().__init__()
-        self.time = time
+        super().__init__(time)
         self.radius_m = radius_m
         self.center = center
+
+        self.__cached_hash = hash((self.radius_m, self.center, self.time))
 
     def contains_point(self, point, offset_m):
         return abs(self.center[0] - point[0]) ** 2 + abs(self.center[1] - point[1]) ** 2 <= (self.radius_m + offset_m) ** 2
@@ -331,3 +341,46 @@ class DiskGeofence(Geofence):
                                     PCO_SCALING_FACTOR)
 
         return buffer
+
+    def __hash__(self):
+        return self.__cached_hash
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.center == other.center and self.time == other.time \
+               and self.radius_m == other.radius_m
+
+
+class PolygonalGeofence(Geofence):
+    geometry: List
+
+    def __init__(self, time: Tuple[int, int], geometry: List[Tuple[float, float]]):
+        super().__init__(time)
+
+        self.geometry = scale_to_clipper(geometry, PCO_SCALING_FACTOR)
+        self.__cached_hash = hash(str(self.geometry))
+
+    def contains_point(self, point, offset_m):
+        if offset_m == 0:
+            # A hack
+            offset_m = 2/PCO_SCALING_FACTOR
+
+        point_geometry = PyclipperOffset()
+        point_geometry.AddPath(scale_to_clipper([point, ], PCO_SCALING_FACTOR), pyclipper.JT_ROUND,
+                               pyclipper.ET_OPENSQUARE)
+        point_buffer = point_geometry.Execute(offset_m * PCO_SCALING_FACTOR)
+
+        pco_intersection = Pyclipper()
+        pco_intersection.AddPath(self.geometry, pyclipper.PT_SUBJECT, True)
+        pco_intersection.AddPath(point_buffer[0], pyclipper.PT_CLIP, True)
+        res = pco_intersection.Execute(pyclipper.CT_INTERSECTION, pyclipper.PFT_EVENODD, pyclipper.PFT_EVENODD)
+
+        return len(res) > 0
+
+    def get_pyclipper_geometry(self) -> List:
+        return self.geometry
+
+    def __hash__(self):
+        return self.__cached_hash
+
+    def __eq__(self, other):
+        return isinstance(other, self.__class__) and self.geometry == other.geometry and self.time == other.time
